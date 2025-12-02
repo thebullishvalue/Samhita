@@ -417,10 +417,10 @@ def format_currency(value):
     
     grouped = []
     if len(str_value) >= 3:
-        grouped.append(str_value[:3])
+        grouped.append(str_value[:3][::-1]) # Reverse back the slice to correct order
         str_value = str_value[3:]
         while str_value:
-            grouped.append(str_value[:2])
+            grouped.append(str_value[:2][::-1]) # Reverse back the slice to correct order
             str_value = str_value[2:]
         formatted = ','.join(grouped[::-1])
     else:
