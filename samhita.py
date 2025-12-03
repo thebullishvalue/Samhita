@@ -386,15 +386,25 @@ def fetch_current_prices(symbols):
     elif len(tickers_with_suffix) > 1 and isinstance(data.columns, pd.MultiIndex):
         for full_ticker in tickers_with_suffix:
             original_symbol = full_ticker.replace('.NS', '')
-            # Extract the column data for the specific ticker
-            ticker_data = data.get(full_ticker) 
-            
-            if ticker_data is not None and not ticker_data.empty and 'Close' in ticker_data.columns:
-                # Use the last valid close price
-                last_price = ticker_data['Close'].iloc[-1]
-                prices[original_symbol] = last_price
-            else:
-                prices[original_symbol] = np.nan # Use NaN if fetch fails
+            try:
+                # Extract the column data for the specific ticker using proper DataFrame access
+                if full_ticker in data.columns.get_level_values(0):
+                    ticker_data = data[full_ticker]
+                else:
+                    ticker_data = None
+                
+                if ticker_data is not None and not ticker_data.empty and 'Close' in ticker_data.columns:
+                    # Get the last valid (non-NaN) close price
+                    close_series = ticker_data['Close'].dropna()
+                    if not close_series.empty:
+                        last_price = close_series.iloc[-1]
+                        prices[original_symbol] = last_price
+                    else:
+                        prices[original_symbol] = np.nan
+                else:
+                    prices[original_symbol] = np.nan  # Use NaN if fetch fails
+            except Exception:
+                prices[original_symbol] = np.nan  # Use NaN if any error occurs
     
     # Case 3: Empty or unexpected return (e.g., all symbols failed)
     elif data.empty or (isinstance(data, dict) and not data):
@@ -459,32 +469,39 @@ def calculate_metrics(df):
 
 # Function to format currency (Indian Rupee with Indian comma style)
 def format_currency(value):
-    # This is a robust fallback for the Indian number system, as locale isn't reliable in Streamlit/hosted environments
+    """
+    Formats a number in Indian numbering system (lakhs, crores).
+    Example: 6797258.49 -> ₹67,97,258.49
+    """
     value = float(value)
     negative = value < 0
     value = abs(value)
     
-    # Handle the integer part separately
+    # Split into integer and decimal parts
     integer_part = int(value)
-    str_value = str(integer_part)[::-1]
+    decimal_part = value - integer_part
     
-    grouped = []
-    if len(str_value) >= 3:
-        grouped.append(str_value[:3][::-1]) # Reverse back the slice to correct order
-        str_value = str_value[3:]
-        while str_value:
-            grouped.append(str_value[:2][::-1]) # Reverse back the slice to correct order
-            str_value = str_value[2:]
-        formatted = ','.join(grouped[::-1])
+    # Convert integer to string
+    int_str = str(integer_part)
+    
+    # Indian numbering: first group of 3 from right, then groups of 2
+    if len(int_str) <= 3:
+        formatted = int_str
     else:
-        formatted = str_value[::-1]
-
-    # Handle the decimal part
-    decimal_part = round(value - integer_part, 2)
-    if decimal_part > 0 or value == 0:
-        # Add 2 decimal places, including the leading dot
-        formatted += f"{decimal_part:.2f}"[1:]
-
+        # Last 3 digits
+        result = int_str[-3:]
+        # Remaining digits, grouped by 2 from right to left
+        remaining = int_str[:-3]
+        while len(remaining) > 2:
+            result = remaining[-2:] + ',' + result
+            remaining = remaining[:-2]
+        if remaining:
+            result = remaining + ',' + result
+        formatted = result
+    
+    # Add decimal places (always show 2 decimal places)
+    formatted += f"{decimal_part:.2f}"[1:]
+    
     formatted = f"{'-' if negative else ''}₹{formatted}"
     return formatted
 
@@ -880,7 +897,7 @@ def main():
             excel_data,
             file_name=f"samhita_portfolio_details_{datetime.now().strftime('%Y%m%d')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheet.sheet",
-            use_container_width=False
+            width="content"
         )
 
 
