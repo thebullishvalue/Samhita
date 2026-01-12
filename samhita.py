@@ -13,7 +13,8 @@ import time # Added for exponential backoff
 st.set_page_config(
     page_title="Samhita : ETF Portfolio Analytics",
     layout="wide",
-    page_icon="📊"
+    page_icon="📊",
+    initial_sidebar_state="collapsed"
 )
 
 # --- Premium Professional CSS (Ported from quo.py) ---
@@ -61,7 +62,9 @@ def load_css():
         
         .block-container {
             padding-top: 1rem;
-            max-width: 1400px;
+            max-width: 90%; 
+            padding-left: 2rem; 
+            padding-right: 2rem;
         }
         
         /* Premium Header Structure */
@@ -301,116 +304,128 @@ def load_css():
             background: linear-gradient(90deg, transparent 0%, var(--border-color) 50%, transparent 100%);
             margin: 1.5rem 0;
         }
+
+        /* Buttons - Gold outline with glow on hover */
+        .stButton>button {
+            border: 2px solid var(--primary-color);
+            background: transparent;
+            color: var(--primary-color);
+            font-weight: 700;
+            border-radius: 12px;
+            padding: 0.75rem 2rem;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .stButton>button:hover {
+            box-shadow: 0 0 25px rgba(var(--primary-rgb), 0.6);
+            background: var(--primary-color);
+            color: #1A1A1A;
+            transform: translateY(-2px);
+        }
+        
+        .stButton>button:active {
+            transform: translateY(0);
+        }
+
+        /* Download button styling */
+        .stDownloadButton>button {
+            border: 2px solid var(--primary-color);
+            background: transparent;
+            color: var(--primary-color);
+            font-weight: 700;
+            border-radius: 12px;
+            padding: 0.75rem 2rem;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .stDownloadButton>button:hover {
+            box-shadow: 0 0 25px rgba(var(--primary-rgb), 0.6);
+            background: var(--primary-color);
+            color: #1A1A1A;
+            transform: translateY(-2px);
+        }
     </style>
     """, unsafe_allow_html=True)
 
 load_css()
 
 # Function to fetch current prices from yfinance
-@st.cache_data(ttl=3600, show_spinner="Fetching real-time prices...")
+@st.cache_data(ttl=300, show_spinner="Fetching real-time prices...")  # 5 min cache
 def fetch_current_prices(symbols):
     """
     Fetches the latest closing price for a list of symbols with the .NS suffix.
     Returns a dictionary of {original_symbol: price}.
     
-    TREATMENTS APPLIED: 
-    1. Added retry logic with exponential backoff for YFRateLimitError.
-    2. Added auto_adjust=False to suppress yfinance FutureWarning.
-    3. Updated data processing logic to handle single/multiple tickers robustly.
+    Uses the same proven approach as returns.py:
+    - Daily data (no intraday interval) to avoid rate limits
+    - Single bulk download for all tickers
+    - 5-day period to handle weekends/holidays
     """
     if not symbols:
         return {}
 
-    # Add .NS suffix to symbols and create a unique list of tickers
+    # Add .NS suffix to symbols
     tickers_with_suffix = [f"{s}.NS" for s in symbols if s and isinstance(s, str)]
     
-    MAX_RETRIES = 3
-    BASE_DELAY = 5 # seconds
-
-    data = None
-    
-    # --- Retry Loop with Exponential Backoff ---
-    for attempt in range(MAX_RETRIES):
-        try:
-            # Fetch the most recent data for all tickers
-            data = yf.download(
-                tickers=tickers_with_suffix,
-                period="1d",
-                interval="1m",
-                group_by='ticker',
-                progress=False,
-                threads=True,
-                auto_adjust=False # <-- Suppress FutureWarning
-            )
-            
-            # If download succeeds, break the retry loop
-            break 
-            
-        except yf.exceptions.YFRateLimitError as e:
-            if attempt < MAX_RETRIES - 1:
-                # Exponential backoff: 5s, 10s, 20s...
-                delay = BASE_DELAY * (2 ** attempt) 
-                st.warning(f"Rate limit hit. Retrying in {delay} seconds... (Attempt {attempt + 1}/{MAX_RETRIES})")
-                time.sleep(delay)
-            else:
-                # Last attempt failed due to rate limit
-                st.error(f"Failed to fetch data after {MAX_RETRIES} attempts due to rate limit or connection issues. Data may be stale.")
-                return {s: np.nan for s in symbols} # Return NaN for all
-        
-        except Exception as e:
-            # Handle other general exceptions (e.g., connection issues, invalid ticker)
-            st.error(f"Error fetching data: {e}. Data may be stale.") 
-            return {s: np.nan for s in symbols}
-
-
-    # --- DATA PROCESSING LOGIC ---
     prices = {}
-
-    # Check if any data was successfully retrieved 
-    if data is None:
-        return {s: np.nan for s in symbols}
-
-
-    # Case 1: Single Ticker Download (yfinance returns a single DataFrame)
-    if len(tickers_with_suffix) == 1 and isinstance(data, pd.DataFrame):
-        full_ticker = tickers_with_suffix[0]
-        original_symbol = full_ticker.replace('.NS', '')
+    
+    try:
+        # Fetch daily data for last 5 days (handles weekends/holidays)
+        # NO interval parameter = daily data = less rate limiting
+        data = yf.download(
+            tickers=tickers_with_suffix,
+            period="5d",
+            progress=False,
+            auto_adjust=False
+        )
         
-        if not data.empty and 'Close' in data.columns:
-            last_price = data['Close'].iloc[-1]
-            prices[original_symbol] = last_price
+        if data.empty:
+            st.warning("yfinance returned empty data.")
+            return {s: np.nan for s in symbols}
+        
+        # Get Close prices
+        try:
+            close_prices = data['Close']
+        except KeyError:
+            st.warning("No 'Close' column in fetched data.")
+            return {s: np.nan for s in symbols}
+        
+        if close_prices.empty:
+            return {s: np.nan for s in symbols}
+        
+        # Single ticker case: close_prices is a Series
+        if len(tickers_with_suffix) == 1:
+            ticker = tickers_with_suffix[0]
+            original = ticker.replace('.NS', '')
+            last_price = close_prices.dropna().iloc[-1] if not close_prices.dropna().empty else np.nan
+            prices[original] = float(last_price) if not pd.isna(last_price) else np.nan
+        
+        # Multiple tickers case: close_prices is a DataFrame
         else:
-            prices[original_symbol] = np.nan
+            # Get last row (most recent date)
+            latest_prices = close_prices.iloc[-1]
+            
+            for ticker in tickers_with_suffix:
+                original = ticker.replace('.NS', '')
+                try:
+                    price = latest_prices[ticker]
+                    prices[original] = float(price) if not pd.isna(price) else np.nan
+                except (KeyError, TypeError):
+                    prices[original] = np.nan
+                    
+    except Exception as e:
+        st.error(f"Error fetching data from yfinance: {e}")
+        return {s: np.nan for s in symbols}
     
-    # Case 2: Multiple Ticker Download (yfinance returns a MultiIndex DataFrame)
-    elif len(tickers_with_suffix) > 1 and isinstance(data.columns, pd.MultiIndex):
-        for full_ticker in tickers_with_suffix:
-            original_symbol = full_ticker.replace('.NS', '')
-            try:
-                # Extract the column data for the specific ticker using proper DataFrame access
-                if full_ticker in data.columns.get_level_values(0):
-                    ticker_data = data[full_ticker]
-                else:
-                    ticker_data = None
-                
-                if ticker_data is not None and not ticker_data.empty and 'Close' in ticker_data.columns:
-                    # Get the last valid (non-NaN) close price
-                    close_series = ticker_data['Close'].dropna()
-                    if not close_series.empty:
-                        last_price = close_series.iloc[-1]
-                        prices[original_symbol] = last_price
-                    else:
-                        prices[original_symbol] = np.nan
-                else:
-                    prices[original_symbol] = np.nan  # Use NaN if fetch fails
-            except Exception:
-                prices[original_symbol] = np.nan  # Use NaN if any error occurs
+    # Report any failures
+    failed = [s for s in symbols if s in prices and pd.isna(prices.get(s))]
+    if failed:
+        st.warning(f"⚠️ Could not fetch prices for: {', '.join(failed[:5])}{'...' if len(failed) > 5 else ''}")
     
-    # Case 3: Empty or unexpected return (e.g., all symbols failed)
-    elif data.empty or (isinstance(data, dict) and not data):
-         st.warning("yfinance returned empty data.")
-         return {s: np.nan for s in symbols}
-         
     return prices
     
 
@@ -517,6 +532,20 @@ def to_excel(df):
 
 # Main app
 def main():
+    # --- Sidebar Controls ---
+    with st.sidebar:
+        st.markdown("### Data Controls")
+        
+        # Clear cache button (forces fresh fetch on next load)
+        if st.button("Refresh Prices", help="Clear cached prices and fetch fresh data"):
+            st.cache_data.clear()
+            st.rerun()
+        
+        st.markdown("---")
+        st.markdown("### Info")
+        st.caption("Prices auto-refresh every 5 minutes.")
+        st.caption("Uses daily close prices to avoid rate limits.")
+    
     # Header - Using the premium-header structure
     st.markdown(f"""
         <div class="premium-header">
@@ -617,7 +646,7 @@ def main():
             col_out1, col_under1 = st.columns(2)
 
             with col_out1:
-                st.markdown("<h4 class='performance-subheader'>Out-Performers (Highest GAIN %)</h4>", unsafe_allow_html=True)
+                st.markdown("<h4 class='performance-subheader'>Out-Performers</h4>", unsafe_allow_html=True)
                 top_performers_gain = df.nlargest(3, 'GAIN %')
                 for _, row in top_performers_gain.iterrows():
                     # Use CSS variables
@@ -643,7 +672,7 @@ def main():
                     """, unsafe_allow_html=True)
 
             with col_under1:
-                st.markdown("<h4 class='performance-subheader'>Under-Performers (Lowest GAIN %)</h4>", unsafe_allow_html=True)
+                st.markdown("<h4 class='performance-subheader'>Under-Performers</h4>", unsafe_allow_html=True)
                 bottom_performers_gain = df.nsmallest(3, 'GAIN %')
                 for _, row in bottom_performers_gain.iterrows():
                     # Use CSS variables
@@ -674,7 +703,7 @@ def main():
             col_out2, col_under2 = st.columns(2)
 
             with col_out2:
-                st.markdown("<h4 class='performance-subheader'>Out-Performers (Highest WEIGHTED RETURN %)</h4>", unsafe_allow_html=True)
+                st.markdown("<h4 class='performance-subheader'>Out-Performers</h4>", unsafe_allow_html=True)
                 top_performers_weighted = df.nlargest(3, 'WEIGHTED RETURN %')
                 for _, row in top_performers_weighted.iterrows():
                     # Use CSS variables
@@ -700,7 +729,7 @@ def main():
                     """, unsafe_allow_html=True)
 
             with col_under2:
-                st.markdown("<h4 class='performance-subheader'>Under-Performers (Lowest WEIGHTED RETURN %)</h4>", unsafe_allow_html=True)
+                st.markdown("<h4 class='performance-subheader'>Under-Performers</h4>", unsafe_allow_html=True)
                 bottom_performers_weighted = df.nsmallest(3, 'WEIGHTED RETURN %')
                 for _, row in bottom_performers_weighted.iterrows():
                     # Use CSS variables
@@ -895,9 +924,8 @@ def main():
         st.download_button(
             "Export Raw Portfolio Data (Excel)",
             excel_data,
-            file_name=f"samhita_portfolio_details_{datetime.now().strftime('%Y%m%d')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheet.sheet",
-            width="content"
+            file_name=f"Samhita_portfolio_details_{datetime.now().strftime('%Y%m%d')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheet.sheet"
         )
 
 
