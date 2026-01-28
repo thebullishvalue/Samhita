@@ -30,6 +30,7 @@ Real-time ETF portfolio analytics with institutional-grade performance tracking 
 ### Analysis Mode (Bloomberg Terminal Grade)
 - **Interactive Chart**: Portfolio vs NIFTY 50 benchmark (data pegged to market dates)
 - **Timeframe Buttons**: 1W, 1M, 3M, 6M, YTD, 1Y, 2Y, 5Y, MAX
+- **Anchor Date**: Set a custom investment start date for all metrics
 - **Risk-Adjusted Metrics**: 
   - Sharpe, Sortino, Calmar, Information Ratio, Treynor
   - Alpha, Beta, R-Squared, Correlation
@@ -41,11 +42,16 @@ Real-time ETF portfolio analytics with institutional-grade performance tracking 
 - **Monthly Heatmap**: Year × Month returns matrix with YTD
 - **Holding Attribution**: Individual contribution to portfolio return
 
+### Sidebar Controls
+- **Refresh Prices**: Clear cache and fetch fresh data
+- **View Mode**: Toggle between Dashboard and Analysis Mode
+- **Anchor Date**: Enable/disable custom start date for Analysis Mode
+
 ## Installation
 
 ```bash
 pip install -r requirements.txt
-streamlit run app.py
+streamlit run samhita.py
 ```
 
 ## Requirements
@@ -70,11 +76,10 @@ Place your portfolio data in `ETF Summary Report.xlsx` with columns:
 
 - Golden accent theme (#FFC300)
 - Dark mode interface
-- Consistent with NIRNAY, AARAMBH, ARTHAGATI, PRAGYAM
+- Consistent with NIRNAY, AARAMBH, ARTHAGATI, PRAGYAM, SWING
 - Dynamic IST footer timestamp
 
 ## Version History
 
-- v1.1.0: Institutional-grade analytics, benchmark comparison, advanced metrics
+- v1.1.0: Institutional-grade analytics, benchmark comparison, advanced metrics, anchor date
 - v1.0.0: Initial release
-# Samhita
