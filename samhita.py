@@ -1,27 +1,29 @@
 # -*- coding: utf-8 -*-
 """
-SAMHITA (संहिता) - Portfolio Tracker | A Hemrek Capital Product
+SAMHITA (संहिता) - Portfolio Tracker | A @thebullishvalue Product
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Real-time ETF portfolio analytics with performance tracking.
 Time series analysis and historical performance insights.
 """
 
-import streamlit as st
+from __future__ import annotations
+
+from datetime import datetime, timedelta, timezone
+from io import BytesIO
+from typing import Any
+
+import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-from io import BytesIO
-from datetime import datetime, timedelta, timezone
-import numpy as np
-import locale
+import streamlit as st
 import yfinance as yf
-import time
+from plotly.subplots import make_subplots
 
 # --- Constants ---
-VERSION = "v1.1.0"
+VERSION = "v1.1.1"
 PRODUCT_NAME = "Samhita"
-COMPANY = "Hemrek Capital"
+COMPANY = "@thebullishvalue"
 
 # Streamlit page configuration
 st.set_page_config(
@@ -31,7 +33,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- Premium Professional CSS (Hemrek Capital Design System) ---
+# --- Premium Professional CSS (@thebullishvalue Design System) ---
 def load_css():
     st.markdown("""
     <style>
@@ -451,11 +453,11 @@ load_css()
 
 # Function to fetch current prices from yfinance
 @st.cache_data(ttl=300, show_spinner="Fetching real-time prices...")  # 5 min cache
-def fetch_current_prices(symbols):
+def fetch_current_prices(symbols: list[str]) -> dict[str, float | Any]:
     """
     Fetches the latest closing price for a list of symbols with the .NS suffix.
     Returns a dictionary of {original_symbol: price}.
-    
+
     Uses the same proven approach as returns.py:
     - Daily data (no intraday interval) to avoid rate limits
     - Single bulk download for all tickers
@@ -527,7 +529,8 @@ def fetch_current_prices(symbols):
 
 # Function to load data
 @st.cache_data
-def load_data():
+def load_data() -> pd.DataFrame | None:
+    """Load portfolio data from Excel file."""
     file_path = "ETF Summary Report.xlsx"
     try:
         df = pd.read_excel(file_path)
@@ -540,7 +543,7 @@ def load_data():
 
 # Function to fetch previous day close prices for Today Return calculation
 @st.cache_data(ttl=300)
-def fetch_previous_close(symbols):
+def fetch_previous_close(symbols: list[str]) -> dict[str, float | Any]:
     """Fetch previous trading day close prices for calculating today return."""
     if not symbols:
         return {}
@@ -592,10 +595,11 @@ def fetch_previous_close(symbols):
     return prices
 
 # Function to calculate metrics
-def calculate_metrics(df):
+def calculate_metrics(
+    df: pd.DataFrame,
+) -> tuple[pd.DataFrame, dict[str, float]]:
+    """Calculate portfolio performance metrics."""
     df = df.copy()
-    
-    # 1. Fetch current prices
     symbols = df['SYMBOL'].tolist()
     price_map = fetch_current_prices(symbols)
     
@@ -655,7 +659,7 @@ def calculate_metrics(df):
     return df, metrics
 
 # Function to format currency (Indian Rupee with Indian comma style)
-def format_currency(value):
+def format_currency(value: float) -> str:
     """
     Formats a number in Indian numbering system (lakhs, crores).
     Example: 6797258.49 -> Rs 67,97,258.49
@@ -694,7 +698,8 @@ def format_currency(value):
 
 
 # Function to create downloadable Excel
-def to_excel(df):
+def to_excel(df: pd.DataFrame) -> bytes:
+    """Generate Excel file from DataFrame."""
     output = BytesIO()
     # Drop calculated columns that may cause issues or are redundant for a base export
     export_df = df.drop(columns=['INVESTED', 'CURR. VALUE', 'GAIN', 'GAIN %', 'WT', 'WEIGHTED RETURN %', 'FETCHED PRICE'], errors='ignore')
@@ -703,7 +708,8 @@ def to_excel(df):
     return output.getvalue()
 
 # Main app
-def main():
+def main() -> None:
+    """Main application entry point."""
     # --- Sidebar Controls (Nirnay-style) ---
     with st.sidebar:
         st.markdown("""
@@ -1231,7 +1237,7 @@ def main():
             st.download_button(
                 "Export Raw Portfolio Data (Excel)",
                 excel_data,
-                file_name=f"Swing_portfolio_details_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                file_name=f"Samhita_portfolio_details_{datetime.now().strftime('%Y%m%d')}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheet.sheet"
             )
         
@@ -1618,7 +1624,9 @@ TIMEFRAMES = {
 }
 
 @st.cache_data(ttl=300)
-def fetch_analysis_data(symbols, days_back):
+def fetch_analysis_data(
+    symbols: list[str], days_back: int
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Fetch historical data for portfolio and NIFTY 50 benchmark.
     Portfolio data is aligned to NIFTY 50 trading dates to avoid
     holiday/timezone edge cases.
@@ -1683,9 +1691,13 @@ def fetch_analysis_data(symbols, days_back):
         return pd.DataFrame(), pd.DataFrame()
 
 
-def compute_metrics(returns, benchmark_returns=None, rf_rate=0.065):
+def compute_metrics(
+    returns: pd.Series,
+    benchmark_returns: pd.Series | None = None,
+    rf_rate: float = 0.065,
+) -> dict[str, Any]:
     """Compute institutional-grade performance metrics.
-    
+
     Handles edge cases:
     - Short periods (< 5 days)
     - Negative total returns
@@ -1889,7 +1901,9 @@ def compute_metrics(returns, benchmark_returns=None, rf_rate=0.065):
     return m
 
 
-def render_analysis_mode(df, metrics, anchor_date=None):
+def render_analysis_mode(
+    df: pd.DataFrame, metrics: dict[str, float], anchor_date: datetime | None = None
+) -> None:
     """Render Bloomberg Terminal style analytics."""
     
     st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
@@ -2663,5 +2677,4 @@ def render_analysis_mode(df, metrics, anchor_date=None):
 
 
 if __name__ == "__main__":
-    import base64
     main()
