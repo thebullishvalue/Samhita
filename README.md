@@ -2,7 +2,7 @@
 
 **A @thebullishvalue Product | v1.1.1**
 
-Real-time ETF portfolio analytics with institutional-grade performance tracking, benchmark comparison, and advanced risk analytics.
+Real-time portfolio analytics with institutional-grade performance tracking, benchmark comparison, and advanced risk analytics.
 
 ---
 
@@ -38,7 +38,7 @@ The application fetches real-time prices from Yahoo Finance, processes portfolio
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                        SAMHITA Application                     │
+│                        SAMHITA Application                      │
 ├─────────────────────────────────────────────────────────────┤
 │                                                               │
 │  ┌──────────────────┐         ┌──────────────────────────┐   │
@@ -87,7 +87,7 @@ The application fetches real-time prices from Yahoo Finance, processes portfolio
 
 ### Data Flow
 
-1. **Input**: Portfolio data loaded from `ETF Summary Report.xlsx` (asset names, symbols, quantities, average prices)
+1. **Input**: Portfolio data loaded from `Summary Report.xlsx` (asset names, symbols, quantities, average prices)
 2. **Price Enrichment**: Real-time current prices and previous close fetched from Yahoo Finance
 3. **Metrics Calculation**: Per-holding and portfolio-level metrics computed (values, gains, weights, returns)
 4. **Mode Selection**: User chooses Dashboard or Analysis Mode via sidebar
@@ -170,7 +170,7 @@ The application will open in your default web browser at `http://localhost:8501`
 
 ### Getting Started
 
-1. **Prepare your data**: Create an Excel file named `ETF Summary Report.xlsx` with the required columns
+1. **Prepare your data**: Create an Excel file named `Summary Report.xlsx` with the required columns
 2. **Place the file**: Ensure the Excel file is in the same directory as `samhita.py`
 3. **Launch the app**: Run `streamlit run samhita.py`
 4. **View your portfolio**: The app will automatically fetch real-time prices and calculate metrics
@@ -198,11 +198,11 @@ The application will open in your default web browser at `http://localhost:8501`
 
 ## Data Input
 
-Place your portfolio data in `ETF Summary Report.xlsx` with the following columns:
+Place your portfolio data in `Summary Report.xlsx` with the following columns:
 
 | Column | Description | Example |
 |---|---|---|
-| **ASSET NAME** | Full name of the ETF | "NIFTY 50 ETF" |
+| **ASSET NAME** | Full name of the Asset | "NIFTY 50 ETF" |
 | **SYMBOL** | NSE ticker symbol (without .NS suffix) | "NIFTYBEES" |
 | **QUANTITY** | Number of units held | 150 |
 | **AVERAGE PRICE** | Average purchase price per unit | 185.50 |

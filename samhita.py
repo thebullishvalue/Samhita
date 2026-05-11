@@ -2,8 +2,10 @@
 """
 SAMHITA (संहिता) - Portfolio Tracker | A @thebullishvalue Product
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Real-time ETF portfolio analytics with performance tracking.
+Real-time portfolio analytics with performance tracking.
 Time series analysis and historical performance insights.
+
+UI — "Obsidian Quant" Institutional Research Terminal design language.
 """
 
 from __future__ import annotations
@@ -20,436 +22,45 @@ import streamlit as st
 import yfinance as yf
 from plotly.subplots import make_subplots
 
+from ui.theme import (
+    PLOTLY_FONT,
+    PLOTLY_HOVERLABEL,
+    chart_layout,
+    inject_css,
+    style_axes,
+)
+from ui.components import (
+    render_header,
+    render_metric_card,
+    render_section_header,
+)
+
 # --- Constants ---
 VERSION = "v1.1.1"
 PRODUCT_NAME = "Samhita"
 COMPANY = "@thebullishvalue"
 
+# Obsidian Quant chart palette
+CHART_AMBER = "#D4A853"
+CHART_AMBER_GLOW = "rgba(212, 168, 83, 0.15)"
+CHART_EMERALD = "#2DD4A8"
+CHART_ROSE = "#E8555A"
+CHART_CYAN = "#06B6D4"
+CHART_VIOLET = "#8B5CF6"
+CHART_INK = "#F1F5F9"
+CHART_INK_MUTED = "#94A3B8"
+CHART_INK_SUBTLE = "#64748B"
+CHART_GRID = "rgba(255,255,255,0.035)"
+
 # Streamlit page configuration
 st.set_page_config(
     page_title="SAMHITA | Portfolio Tracker",
     layout="wide",
-    page_icon="📊",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="collapsed",
 )
 
-# --- Premium Professional CSS (@thebullishvalue Design System) ---
-def load_css():
-    st.markdown("""
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
-        
-        :root {
-            --primary-color: #FFC300;
-            --primary-rgb: 255, 195, 0;
-            --background-color: #0F0F0F;
-            --secondary-background-color: #1A1A1A;
-            --bg-card: #1A1A1A;
-            --bg-elevated: #2A2A2A;
-            --text-primary: #EAEAEA;
-            --text-secondary: #EAEAEA;
-            --text-muted: #888888;
-            --border-color: #2A2A2A;
-            --border-light: #3A3A3A;
-            
-            --success-green: #10b981;
-            --success-dark: #059669;
-            --danger-red: #ef4444;
-            --danger-dark: #dc2626;
-            --warning-amber: #f59e0b;
-            --info-cyan: #06b6d4;
-            
-            --neutral: #888888;
-        }
-        
-        * {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-        }
-        
-        .main, [data-testid="stSidebar"] {
-            background-color: var(--background-color);
-            color: var(--text-primary);
-        }
-        
-        .stApp > header {
-            background-color: transparent;
-        }
-        
-        #MainMenu {visibility: hidden;} footer {visibility: hidden;}
-        
-        .block-container {
-            padding-top: 3.5rem;
-            max-width: 90%; 
-            padding-left: 2rem; 
-            padding-right: 2rem;
-        }
-        
-        /* Sidebar toggle button - always visible */
-        [data-testid="collapsedControl"] {
-            display: flex !important;
-            visibility: visible !important;
-            opacity: 1 !important;
-            background-color: var(--secondary-background-color) !important;
-            border: 2px solid var(--primary-color) !important;
-            border-radius: 8px !important;
-            padding: 10px !important;
-            margin: 12px !important;
-            box-shadow: 0 0 15px rgba(var(--primary-rgb), 0.4) !important;
-            z-index: 999999 !important;
-            position: fixed !important;
-            top: 14px !important;
-            left: 14px !important;
-            width: 40px !important;
-            height: 40px !important;
-            align-items: center !important;
-            justify-content: center !important;
-        }
-        
-        [data-testid="collapsedControl"]:hover {
-            background-color: rgba(var(--primary-rgb), 0.2) !important;
-            box-shadow: 0 0 20px rgba(var(--primary-rgb), 0.6) !important;
-            transform: scale(1.05);
-        }
-        
-        [data-testid="collapsedControl"] svg {
-            stroke: var(--primary-color) !important;
-            width: 20px !important;
-            height: 20px !important;
-        }
-        
-        [data-testid="stSidebar"] button[kind="header"] {
-            background-color: transparent !important;
-            border: none !important;
-        }
-        
-        [data-testid="stSidebar"] button[kind="header"] svg {
-            stroke: var(--primary-color) !important;
-        }
-        
-        button[kind="header"] {
-            z-index: 999999 !important;
-        }
-        
-        [data-testid="stSidebar"] { 
-            background: var(--secondary-background-color); 
-            border-right: 1px solid var(--border-color); 
-        }
-        
-        /* Premium Header Structure */
-        .premium-header {
-            background: var(--secondary-background-color);
-            padding: 1.25rem 2rem;
-            border-radius: 16px;
-            margin-bottom: 1.5rem;
-            box-shadow: 0 0 20px rgba(var(--primary-rgb), 0.1);
-            border: 1px solid var(--border-color);
-            position: relative;
-            overflow: hidden;
-            margin-top: 1rem;
-        }
-        
-        .premium-header::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: radial-gradient(circle at 20% 50%, rgba(var(--primary-rgb),0.08) 0%, transparent 50%);
-            pointer-events: none;
-        }
-        
-        .premium-header h1 {
-            margin: 0;
-            font-size: 2rem;
-            font-weight: 700;
-            color: var(--text-primary);
-            letter-spacing: -0.50px;
-            position: relative;
-        }
-        
-        .premium-header .tagline {
-            color: var(--text-muted);
-            font-size: 0.9rem;
-            margin-top: 0.25rem;
-            font-weight: 400;
-            position: relative;
-        }
-        
-        /* Metric Card Styling */
-        .metric-card {
-            background-color: var(--bg-card);
-            padding: 1.25rem;
-            border-radius: 12px;
-            border: 1px solid var(--border-color);
-            box-shadow: 0 0 15px rgba(var(--primary-rgb), 0.08);
-            margin-bottom: 0.5rem;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            position: relative;
-            overflow: hidden;
-            height: 100%;
-        }
-        
-        .metric-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 30px rgba(0,0,0,0.3);
-            border-color: var(--border-light);
-        }
-        
-        .metric-card h4 {
-            color: var(--text-muted);
-            font-size: 0.75rem;
-            margin-bottom: 0.5rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-        
-        .metric-card h2 {
-            color: var(--text-primary);
-            font-size: 1.75rem;
-            font-weight: 700;
-            margin: 0;
-            line-height: 1;
-        }
-        
-        .metric-card .sub-metric {
-            font-size: 0.75rem;
-            color: var(--text-muted);
-            margin-top: 0.5rem;
-            font-weight: 500;
-        }
-        
-        .metric-card.success h2 { color: var(--success-green); }
-        .metric-card.danger h2 { color: var(--danger-red); }
-        .metric-card.warning h2 { color: var(--warning-amber); }
-        .metric-card.info h2 { color: var(--info-cyan); }
-        .metric-card.neutral h2 { color: var(--neutral); }
-        .metric-card.primary h2 { color: var(--primary-color); }
+inject_css()
 
-        /* Performance Card (for Highlights) */
-        .performance-card {
-            padding: 0.75rem; 
-            border-radius: 6px;
-            margin-bottom: 0.75rem; 
-            background: var(--bg-elevated);
-            border-left: 3px solid;
-            transition: background 0.2s;
-        }
-        .performance-card:hover {
-            background: var(--border-color);
-        }
-        
-        .performance-card.positive { border-left-color: var(--success-green); }
-        .performance-card.negative { border-left-color: var(--danger-red); }
-        
-        .performance-card .title {
-            font-weight: 600;
-            font-size: 1rem; 
-            margin-bottom: 0.3rem;
-            color: var(--text-primary);
-        }
-        
-        .performance-card .stats {
-            display: flex;
-            justify-content: space-between;
-            font-size: 0.85rem; 
-            color: var(--text-primary);
-            font-weight: 500;
-            margin-bottom: 0.2rem;
-        }
-
-        .performance-section-header {
-            font-size: 1.25rem;
-            font-weight: 700;
-            color: var(--text-primary);
-            margin-bottom: 0.5rem;
-            border-bottom: 1px solid var(--border-color);
-            padding-bottom: 5px;
-        }
-
-        .performance-subheader {
-            font-size: 0.95rem;
-            font-weight: 500;
-            color: var(--text-muted);
-            margin-bottom: 0.5rem;
-        }
-        
-        /* Table Styling */
-        .table-container {
-            width: 100%;
-            overflow-x: auto;
-            border-radius: 12px;
-            background: var(--bg-card);
-            border: 1px solid var(--border-color);
-            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
-            padding: 0;
-        }
-        
-        table.table {
-            width: 100%;
-            table-layout: auto;
-            border-collapse: collapse;
-            color: var(--text-primary);
-        }
-        
-        table.table th, table.table td {
-            padding: 1rem 1.2rem;
-            text-align: left;
-            border-bottom: 1px solid var(--border-color);
-        }
-        
-        table.table th {
-            font-weight: 600;
-            color: var(--primary-color);
-            background-color: var(--bg-elevated);
-            text-transform: uppercase;
-            font-size: 0.85rem;
-            letter-spacing: 0.05em;
-        }
-        
-        table.table td {
-            font-size: 0.95rem;
-        }
-        
-        table.table tr:hover {
-            background: var(--bg-elevated);
-        }
-
-        /* Tab styling */
-        .stTabs [data-baseweb="tab-list"] {
-            gap: 24px;
-            background: transparent;
-            padding: 0;
-            margin-top: 1.5rem;
-            margin-bottom: 1.5rem;
-        }
-        
-        .stTabs [data-baseweb="tab"] {
-            color: var(--text-muted);
-            border-bottom: 2px solid transparent;
-            transition: color 0.3s, border-bottom 0.3s;
-            background: transparent;
-            font-weight: 600;
-        }
-        
-        .stTabs [aria-selected="true"] {
-            color: var(--primary-color) !important;
-            border-bottom: 2px solid var(--primary-color);
-            background: transparent !important;
-        }
-        
-        /* Utility classes */
-        .positive { color: var(--success-green) !important; }
-        .negative { color: var(--danger-red) !important; }
-        .neutral { color: var(--text-primary) !important; }
-
-        /* General Section Dividers/Headers */
-        .section-header {
-            margin-bottom: 1rem;
-            padding-bottom: 0.5rem;
-            border-bottom: 1px solid var(--border-color);
-        }
-        
-        .section-title {
-            font-size: 1.5rem;
-            font-weight: 700;
-            color: var(--text-primary);
-            margin: 0;
-        }
-        
-        .section-subtitle {
-            font-size: 0.95rem;
-            color: var(--text-muted);
-            margin: 0.25rem 0 0 0;
-        }
-
-        .section-divider {
-            height: 1px;
-            background: linear-gradient(90deg, transparent 0%, var(--border-color) 50%, transparent 100%);
-            margin: 1.5rem 0;
-        }
-        
-        .sidebar-title { 
-            font-size: 0.75rem; 
-            font-weight: 700; 
-            color: var(--primary-color); 
-            text-transform: uppercase; 
-            letter-spacing: 1px; 
-            margin-bottom: 0.75rem; 
-        }
-        
-        .info-box { 
-            background: var(--secondary-background-color); 
-            border: 1px solid var(--border-color); 
-            padding: 1.25rem; 
-            border-radius: 12px; 
-            margin: 0.5rem 0; 
-            box-shadow: 0 0 15px rgba(var(--primary-rgb), 0.08); 
-        }
-        .info-box h4 { color: var(--primary-color); margin: 0 0 0.5rem 0; font-size: 1rem; font-weight: 700; }
-        .info-box p { color: var(--text-muted); margin: 0; font-size: 0.9rem; line-height: 1.6; }
-
-        /* Buttons - Gold outline with glow on hover */
-        .stButton>button {
-            border: 2px solid var(--primary-color);
-            background: transparent;
-            color: var(--primary-color);
-            font-weight: 700;
-            border-radius: 12px;
-            padding: 0.75rem 2rem;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        
-        .stButton>button:hover {
-            box-shadow: 0 0 25px rgba(var(--primary-rgb), 0.6);
-            background: var(--primary-color);
-            color: #1A1A1A;
-            transform: translateY(-2px);
-        }
-        
-        .stButton>button:active {
-            transform: translateY(0);
-        }
-
-        /* Download button styling */
-        .stDownloadButton>button {
-            border: 2px solid var(--primary-color);
-            background: transparent;
-            color: var(--primary-color);
-            font-weight: 700;
-            border-radius: 12px;
-            padding: 0.75rem 2rem;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        
-        .stDownloadButton>button:hover {
-            box-shadow: 0 0 25px rgba(var(--primary-rgb), 0.6);
-            background: var(--primary-color);
-            color: #1A1A1A;
-            transform: translateY(-2px);
-        }
-        
-        .stPlotlyChart {
-            border-radius: 12px;
-            background-color: var(--secondary-background-color);
-            padding: 10px;
-            border: 1px solid var(--border-color);
-            box-shadow: 0 0 25px rgba(var(--primary-rgb), 0.1);
-        }
-        
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: var(--background-color); }
-        ::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 3px; }
-        ::-webkit-scrollbar-thumb:hover { background: var(--border-light); }
-    </style>
-    """, unsafe_allow_html=True)
-
-load_css()
 
 # Function to fetch current prices from yfinance
 @st.cache_data(ttl=300, show_spinner="Fetching real-time prices...")  # 5 min cache
@@ -531,7 +142,7 @@ def fetch_current_prices(symbols: list[str]) -> dict[str, float | Any]:
 @st.cache_data
 def load_data() -> pd.DataFrame | None:
     """Load portfolio data from Excel file."""
-    file_path = "ETF Summary Report.xlsx"
+    file_path = "Summary Report.xlsx"
     try:
         df = pd.read_excel(file_path)
         df = df.dropna(how='all')
@@ -707,44 +318,70 @@ def to_excel(df: pd.DataFrame) -> bytes:
         export_df.to_excel(writer, index=False, sheet_name='Portfolio')
     return output.getvalue()
 
+
+# ── Obsidian Quant chart theming helpers ────────────────────────────────────
+def _apply_obsidian(fig, *, height: int = 360, show_legend: bool = False,
+                    margin: dict | None = None, title: str = "",
+                    x_title: str = "", y_title: str = "") -> None:
+    """Apply Obsidian Quant Plotly theming (mutates fig in place)."""
+    layout = chart_layout(height=height, show_legend=show_legend,
+                          margin=margin or dict(t=50, l=10, r=10, b=40))
+    fig.update_layout(**layout)
+    if title:
+        fig.update_layout(
+            title=dict(
+                text=title,
+                font=dict(size=11, color=CHART_INK_SUBTLE,
+                          family="JetBrains Mono, monospace"),
+                x=0, xanchor='left',
+            )
+        )
+    style_axes(fig, y_title=y_title, x_title=x_title)
+
+
 # Main app
 def main() -> None:
     """Main application entry point."""
-    # --- Sidebar Controls (Nirnay-style) ---
+    # --- Sidebar Controls ---
     with st.sidebar:
-        st.markdown("""
-        <div style="text-align: center; padding: 1rem 0; margin-bottom: 1rem;">
-            <div style="font-size: 1.75rem; font-weight: 800; color: #FFC300;">SAMHITA</div>
-            <div style="color: #888888; font-size: 0.75rem; margin-top: 0.25rem;">संहिता | Portfolio Tracker</div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(
+            """
+            <div style="text-align:center; padding: var(--sp-4) 0 var(--sp-3);">
+                <div style="font-family: var(--display); font-size: 1.85rem; font-weight: 700;
+                            letter-spacing: 0.04em; color: var(--amber);
+                            text-shadow: 0 0 24px var(--amber-glow);">SAMHITA</div>
+                <div style="font-family: var(--data); color: var(--ink-secondary);
+                            font-size: 0.7rem; margin-top: var(--sp-1);
+                            text-transform: uppercase; letter-spacing: 0.18em;">
+                    संहिता · Portfolio Tracker
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
         st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
-        
-        st.markdown('<div class="sidebar-title">🔄 Data Controls</div>', unsafe_allow_html=True)
-        
-        # Clear cache button (forces fresh fetch on next load)
-        if st.button("REFRESH PRICES", help="Clear cached prices and fetch fresh data"):
+
+        st.markdown('<div class="sidebar-title">Data Controls</div>', unsafe_allow_html=True)
+        if st.button("Refresh Prices", help="Clear cached prices and fetch fresh data"):
             st.cache_data.clear()
-            st.toast("Price cache cleared!", icon="🔄")
+            st.toast("Price cache cleared")
             st.rerun()
-        
+
         st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
-        
-        st.markdown('<div class="sidebar-title">📊 View Mode</div>', unsafe_allow_html=True)
+
+        st.markdown('<div class="sidebar-title">View Mode</div>', unsafe_allow_html=True)
         view_mode = st.radio(
             "Select View",
-            ["📈 Dashboard", "📉 Analysis Mode"],
-            label_visibility="collapsed"
+            ["Dashboard", "Analysis Mode"],
+            label_visibility="collapsed",
         )
-        
+
         st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
-        
-        # Anchor Date for Analysis Mode
-        st.markdown('<div class="sidebar-title">📅 Anchor Date</div>', unsafe_allow_html=True)
+
+        st.markdown('<div class="sidebar-title">Anchor Date</div>', unsafe_allow_html=True)
         st.caption("Set a custom start date for Analysis Mode metrics")
-        
+
         use_anchor = st.toggle("Enable Anchor Date", value=False, key="use_anchor_date")
-        
         anchor_date = None
         if use_anchor:
             anchor_date = st.date_input(
@@ -752,308 +389,268 @@ def main() -> None:
                 value=datetime.now() - timedelta(days=365),
                 max_value=datetime.now().date(),
                 min_value=datetime(2010, 1, 1).date(),
-                label_visibility="collapsed"
+                label_visibility="collapsed",
             )
-            st.caption(f"📌 Metrics calculated from {anchor_date.strftime('%b %d, %Y')}")
-        
+            st.caption(f"Metrics calculated from {anchor_date.strftime('%b %d, %Y')}")
+
         st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
-        
-        st.markdown(f"""
-        <div class='info-box'>
-            <p style='font-size: 0.8rem; margin: 0; color: var(--text-muted); line-height: 1.5;'>
-                <strong>Version:</strong> {VERSION}<br>
-                <strong>Data:</strong> Yahoo Finance<br>
-                <strong>Refresh:</strong> Every 5 minutes
-            </p>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    # Header - Using the premium-header structure
-    st.markdown(f"""
-        <div class="premium-header">
-            <h1>SAMHITA : Portfolio Tracker</h1>
-            <div class="tagline">Real-Time ETF Analytics & Performance Insights</div>
-        </div>
-    """, unsafe_allow_html=True)
+
+        st.markdown('<div class="sidebar-title">System</div>', unsafe_allow_html=True)
+        st.markdown(
+            f"""
+            <div class="sys-meta">
+                <div class="sys-meta-row">
+                    <span class="sys-meta-key">Version</span>
+                    <span class="sys-meta-val">{VERSION}</span>
+                </div>
+                <div class="sys-meta-row">
+                    <span class="sys-meta-key">Data</span>
+                    <span class="sys-meta-val">Yahoo Finance</span>
+                </div>
+                <div class="sys-meta-row">
+                    <span class="sys-meta-key">Refresh</span>
+                    <span class="sys-meta-val">5 min</span>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    # Terminal masthead
+    render_header(
+        "SAMHITA",
+        "संहिता · Portfolio Tracker · Real-Time Analytics & Performance Insights",
+    )
 
     # Load data
     df = load_data()
     if df is None:
         return
 
-    # Verify required columns
     required_columns = ['ASSET NAME', 'SYMBOL', 'QUANTITY', 'AVERAGE PRICE']
     if not all(col in df.columns for col in required_columns):
-        st.error(f"Excel file must contain: {', '.join(required_columns)}. The 'CURRENT PRICE' column is now automatically fetched.")
+        st.error(
+            f"Excel file must contain: {', '.join(required_columns)}. "
+            "The 'CURRENT PRICE' column is now automatically fetched."
+        )
         return
 
-    # Calculate metrics
     df, metrics = calculate_metrics(df)
 
-    # Portfolio Snapshot Section
-    st.markdown("""
-        <div class='section'>
-            <div class='section-header'>
-                <h3 class='section-title'>Portfolio Snapshot</h3>
-                <p class='section-subtitle'>Overview of your investment performance (Prices are near real-time)</p>
-            </div>
-        </div>
-    """, unsafe_allow_html=True)
-    
-    # Metrics in 4 columns (Holdings moved to dedicated tab)
+    render_section_header(
+        "Portfolio Snapshot",
+        "Overview of your investment performance · prices are near real-time",
+        icon="briefcase",
+    )
+
+    st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+
+
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
-        st.markdown(f"""
-            <div class='metric-card primary'>
-                <h4>Total Portfolio Value</h4>
-                <h2 style='color: var(--primary-color);'>{format_currency(metrics['Total Current Value'])}</h2>
-                <div class='sub-metric'>Invested: {format_currency(metrics['Total Invested'])}</div>
-            </div>
-        """, unsafe_allow_html=True)
+        render_metric_card(
+            "Total Portfolio Value",
+            format_currency(metrics['Total Current Value']),
+            subtext=f"Invested: {format_currency(metrics['Total Invested'])}",
+            color_class="warning",
+        )
 
     with col2:
         gain_val = metrics['Total Gain']
-        gain_class = 'success' if gain_val >= 0 else 'danger'
-        gain_color = 'success-green' if gain_val >= 0 else 'danger-red'
         gain_sign = '+' if gain_val > 0 else ''
-        st.markdown(f"""
-            <div class='metric-card {gain_class}'>
-                <h4>Absolute Gain/Loss</h4>
-                <h2 style='color: var(--{gain_color});'>
-                    {gain_sign}{format_currency(gain_val)}
-                </h2>
-                <div class='sub-metric'>Since inception</div>
-            </div>
-        """, unsafe_allow_html=True)
+        render_metric_card(
+            "Absolute Gain/Loss",
+            f"{gain_sign}{format_currency(gain_val)}",
+            subtext="Since inception",
+            color_class="success" if gain_val >= 0 else "danger",
+        )
 
     with col3:
         return_val = metrics['Portfolio Return %']
-        return_class = 'success' if return_val >= 0 else 'danger'
-        return_color = 'success-green' if return_val >= 0 else 'danger-red'
         return_sign = '+' if return_val > 0 else ''
-        st.markdown(f"""
-            <div class='metric-card {return_class}'>
-                <h4>Total Return</h4>
-                <h2 style='color: var(--{return_color});'>
-                    {return_sign}{return_val:.2f}%
-                </h2>
-                <div class='sub-metric'>Portfolio XIRR equivalent</div>
-            </div>
-        """, unsafe_allow_html=True)
+        render_metric_card(
+            "Total Return",
+            f"{return_sign}{return_val:.2f}%",
+            subtext="Portfolio XIRR equivalent",
+            color_class="success" if return_val >= 0 else "danger",
+        )
 
     with col4:
         today_val = metrics['Today Return %']
         today_change = metrics['Today Change']
-        today_class = 'success' if today_val >= 0 else 'danger'
-        today_color = 'success-green' if today_val >= 0 else 'danger-red'
         today_sign = '+' if today_val > 0 else ''
         change_sign = '+' if today_change > 0 else ''
-        st.markdown(f"""
-            <div class='metric-card {today_class}'>
-                <h4>Today's Return</h4>
-                <h2 style='color: var(--{today_color});'>
-                    {today_sign}{today_val:.2f}%
-                </h2>
-                <div class='sub-metric'>{change_sign}{format_currency(today_change)}</div>
-            </div>
-        """, unsafe_allow_html=True)
+        render_metric_card(
+            "Today's Return",
+            f"{today_sign}{today_val:.2f}%",
+            subtext=f"{change_sign}{format_currency(today_change)}",
+            color_class="success" if today_val >= 0 else "danger",
+        )
+
+    st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+
     
     # =========================================================================
     # DASHBOARD VIEW (Default)
     # =========================================================================
-    if view_mode == "📈 Dashboard":
-        # Tabs for detailed views
-        tab1, tab2, tab3 = st.tabs(["**📊 Performance Analysis**", "**📋 Portfolio Details**", "**🎯 Holdings Analytics**"])
+    if view_mode == "Dashboard":
+        tab1, tab2, tab3 = st.tabs(["Performance Analysis", "Portfolio Details", "Holdings Analytics"])
 
         with tab1:
-            # =========================================================================
-            # PERFORMANCE SNAPSHOT - Quick Summary Metrics
-            # =========================================================================
-            st.markdown("""
-                <div class='section'>
-                    <div class='section-header'>
-                        <h3 class='section-title'>Performance Snapshot</h3>
-                        <p class='section-subtitle'>Current portfolio performance summary (cost basis returns)</p>
-                    </div>
-                </div>
-            """, unsafe_allow_html=True)
-            
-            # Calculate snapshot metrics
+            # ── Performance Snapshot ────────────────────────────────────────
+            render_section_header(
+                "Performance Snapshot",
+                "Current portfolio performance summary · cost-basis returns",
+                icon="activity",
+                accent="emerald",
+            )
+
+            st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+
             total_gain = df['GAIN'].sum()
             total_invested = df['INVESTED'].sum()
             total_return_pct = (total_gain / total_invested * 100) if total_invested > 0 else 0
-            
+
             winners = df[df['GAIN %'] > 0]
             losers = df[df['GAIN %'] < 0]
             n_winners = len(winners)
             n_losers = len(losers)
             n_total = len(df)
-            
+
             avg_winner = winners['GAIN %'].mean() if n_winners > 0 else 0
             avg_loser = losers['GAIN %'].mean() if n_losers > 0 else 0
-            
+
             best_performer = df.loc[df['GAIN %'].idxmax()]
             worst_performer = df.loc[df['GAIN %'].idxmin()]
-            
-            # Row 1: Key metrics
+
             c1, c2, c3, c4, c5, c6 = st.columns(6)
-            
+
             with c1:
-                cls = 'success' if total_gain >= 0 else 'danger'
-                st.markdown(f"""
-                    <div class='metric-card {cls}'>
-                        <h4>Total P&L</h4>
-                        <h2>{format_currency(total_gain)}</h2>
-                        <div class='sub-metric'>{total_return_pct:+.2f}% return</div>
-                    </div>
-                """, unsafe_allow_html=True)
-            
+                render_metric_card(
+                    "Total P&L",
+                    format_currency(total_gain),
+                    subtext=f"{total_return_pct:+.2f}% return",
+                    color_class="success" if total_gain >= 0 else "danger",
+                )
+
             with c2:
                 win_rate = (n_winners / n_total * 100) if n_total > 0 else 0
                 cls = 'success' if win_rate > 50 else 'warning' if win_rate > 30 else 'danger'
-                st.markdown(f"""
-                    <div class='metric-card {cls}'>
-                        <h4>Win Rate</h4>
-                        <h2>{win_rate:.0f}%</h2>
-                        <div class='sub-metric'>{n_winners}W / {n_losers}L</div>
-                    </div>
-                """, unsafe_allow_html=True)
-            
+                render_metric_card(
+                    "Win Rate",
+                    f"{win_rate:.0f}%",
+                    subtext=f"{n_winners}W · {n_losers}L",
+                    color_class=cls,
+                )
+
             with c3:
-                avg_winner_cls = 'success' if avg_winner > 0 else 'neutral' if n_winners == 0 else 'warning'
-                st.markdown(f"""
-                    <div class='metric-card {avg_winner_cls}'>
-                        <h4>Avg Winner</h4>
-                        <h2>{avg_winner:+.1f}%</h2>
-                        <div class='sub-metric'>{n_winners} positions</div>
-                    </div>
-                """, unsafe_allow_html=True)
-            
+                cls = 'success' if avg_winner > 0 else 'neutral' if n_winners == 0 else 'warning'
+                render_metric_card(
+                    "Avg Winner",
+                    f"{avg_winner:+.1f}%",
+                    subtext=f"{n_winners} positions",
+                    color_class=cls,
+                )
+
             with c4:
-                avg_loser_cls = 'danger' if avg_loser < 0 else 'neutral' if n_losers == 0 else 'warning'
-                st.markdown(f"""
-                    <div class='metric-card {avg_loser_cls}'>
-                        <h4>Avg Loser</h4>
-                        <h2>{avg_loser:.1f}%</h2>
-                        <div class='sub-metric'>{n_losers} positions</div>
-                    </div>
-                """, unsafe_allow_html=True)
-            
+                cls = 'danger' if avg_loser < 0 else 'neutral' if n_losers == 0 else 'warning'
+                render_metric_card(
+                    "Avg Loser",
+                    f"{avg_loser:.1f}%",
+                    subtext=f"{n_losers} positions",
+                    color_class=cls,
+                )
+
             with c5:
-                best_cls = 'success' if best_performer['GAIN %'] > 0 else 'danger' if best_performer['GAIN %'] < 0 else 'neutral'
-                st.markdown(f"""
-                    <div class='metric-card {best_cls}'>
-                        <h4>Best Performer</h4>
-                        <h2>{best_performer['GAIN %']:+.1f}%</h2>
-                        <div class='sub-metric'>{best_performer['SYMBOL']}</div>
-                    </div>
-                """, unsafe_allow_html=True)
-            
+                cls = 'success' if best_performer['GAIN %'] > 0 else 'danger' if best_performer['GAIN %'] < 0 else 'neutral'
+                render_metric_card(
+                    "Best Performer",
+                    f"{best_performer['GAIN %']:+.1f}%",
+                    subtext=str(best_performer['SYMBOL']),
+                    color_class=cls,
+                )
+
             with c6:
-                worst_cls = 'danger' if worst_performer['GAIN %'] < 0 else 'success' if worst_performer['GAIN %'] > 0 else 'neutral'
-                st.markdown(f"""
-                    <div class='metric-card {worst_cls}'>
-                        <h4>Worst Performer</h4>
-                        <h2>{worst_performer['GAIN %']:.1f}%</h2>
-                        <div class='sub-metric'>{worst_performer['SYMBOL']}</div>
-                    </div>
-                """, unsafe_allow_html=True)
-            
-            # =========================================================================
-            # TOP MOVERS - Side by side gainers and losers
-            # =========================================================================
+                cls = 'danger' if worst_performer['GAIN %'] < 0 else 'success' if worst_performer['GAIN %'] > 0 else 'neutral'
+                render_metric_card(
+                    "Worst Performer",
+                    f"{worst_performer['GAIN %']:.1f}%",
+                    subtext=str(worst_performer['SYMBOL']),
+                    color_class=cls,
+                )
+
             st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
-            st.markdown("""
-                <div class='section'>
-                    <div class='section-header'>
-                        <h3 class='section-title'>Top Movers</h3>
-                        <p class='section-subtitle'>Highest impact positions by absolute return and portfolio contribution</p>
-                    </div>
-                </div>
-            """, unsafe_allow_html=True)
-            
+            st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+
+
+            # ── Top Movers ──────────────────────────────────────────────────
+            render_section_header(
+                "Top Movers",
+                "Highest impact positions by absolute return and portfolio contribution",
+                icon="trending",
+                accent="cyan",
+            )
+
             col_gainers, col_losers = st.columns(2)
-            
+
             with col_gainers:
-                st.markdown("#### 🟢 Top Gainers")
+                render_section_header("Top Gainers", icon="trending", accent="emerald")
                 top_5_gainers = df.nlargest(5, 'GAIN %')[['SYMBOL', 'GAIN %', 'WT', 'WEIGHTED RETURN %', 'GAIN']]
-                
                 fig_gainers = go.Figure()
                 fig_gainers.add_trace(go.Bar(
                     y=top_5_gainers['SYMBOL'][::-1],
                     x=top_5_gainers['GAIN %'][::-1],
                     orientation='h',
-                    marker_color='#10b981',
+                    marker_color=CHART_EMERALD,
                     text=[f"{x:+.1f}%" for x in top_5_gainers['GAIN %'][::-1]],
                     textposition='outside',
-                    textfont=dict(size=11),
+                    textfont=dict(size=11, color=CHART_INK),
                     hovertemplate="<b>%{y}</b><br>Return: %{x:.2f}%<br>Weight: %{customdata[0]:.1f}%<br>Contribution: %{customdata[1]:.2f}%<extra></extra>",
-                    customdata=top_5_gainers[['WT', 'WEIGHTED RETURN %']][::-1].values
+                    customdata=top_5_gainers[['WT', 'WEIGHTED RETURN %']][::-1].values,
                 ))
-                fig_gainers.update_layout(
-                    template='plotly_dark',
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    font=dict(color="#EAEAEA"),
+                _apply_obsidian(
+                    fig_gainers, height=250, show_legend=False,
                     margin=dict(l=10, r=60, t=50, b=40),
-                    title=dict(text="Absolute Return %", font=dict(size=11, color='#888888'), x=0, xanchor='left'),
-                    xaxis=dict(gridcolor='rgba(255,255,255,0.05)', title=''),
-                    yaxis=dict(gridcolor='rgba(255,255,255,0.05)'),
-                    height=250,
-                    showlegend=False
+                    title="Absolute Return %",
                 )
                 st.plotly_chart(fig_gainers, width="stretch")
-            
+
             with col_losers:
-                st.markdown("#### 🔴 Top Losers")
+                render_section_header("Top Losers", icon="trending", accent="rose")
                 top_5_losers = df.nsmallest(5, 'GAIN %')[['SYMBOL', 'GAIN %', 'WT', 'WEIGHTED RETURN %', 'GAIN']]
-                
                 fig_losers = go.Figure()
                 fig_losers.add_trace(go.Bar(
                     y=top_5_losers['SYMBOL'],
                     x=top_5_losers['GAIN %'],
                     orientation='h',
-                    marker_color='#ef4444',
+                    marker_color=CHART_ROSE,
                     text=[f"{x:.1f}%" for x in top_5_losers['GAIN %']],
                     textposition='outside',
-                    textfont=dict(size=11),
+                    textfont=dict(size=11, color=CHART_INK),
                     hovertemplate="<b>%{y}</b><br>Return: %{x:.2f}%<br>Weight: %{customdata[0]:.1f}%<br>Contribution: %{customdata[1]:.2f}%<extra></extra>",
-                    customdata=top_5_losers[['WT', 'WEIGHTED RETURN %']].values
+                    customdata=top_5_losers[['WT', 'WEIGHTED RETURN %']].values,
                 ))
-                fig_losers.update_layout(
-                    template='plotly_dark',
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    font=dict(color="#EAEAEA"),
+                _apply_obsidian(
+                    fig_losers, height=250, show_legend=False,
                     margin=dict(l=10, r=60, t=50, b=40),
-                    title=dict(text="Absolute Return %", font=dict(size=11, color='#888888'), x=0, xanchor='left'),
-                    xaxis=dict(gridcolor='rgba(255,255,255,0.05)', title=''),
-                    yaxis=dict(gridcolor='rgba(255,255,255,0.05)'),
-                    height=250,
-                    showlegend=False
+                    title="Absolute Return %",
                 )
                 st.plotly_chart(fig_losers, width="stretch")
-            
-            # =========================================================================
-            # PERFORMANCE SCATTER - Return vs Weight
-            # =========================================================================
-            st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
-            st.markdown("""
-                <div class='section'>
-                    <div class='section-header'>
-                        <h3 class='section-title'>Risk-Return Profile</h3>
-                        <p class='section-subtitle'>Position performance vs portfolio weight (bubble size = current value)</p>
-                    </div>
-                </div>
-            """, unsafe_allow_html=True)
-            
-            # Normalize bubble sizes
+
+            # ── Risk-Return Profile ─────────────────────────────────────────
+            render_section_header(
+                "Risk-Return Profile",
+                "Position performance vs portfolio weight · bubble size = current value",
+                icon="crosshair",
+                accent="violet",
+            )
+
             max_val = df['CURR. VALUE'].max()
             bubble_sizes = (df['CURR. VALUE'] / max_val * 40) + 10
-            
+
             fig_scatter = go.Figure()
-            
             fig_scatter.add_trace(go.Scatter(
                 x=df['WT'],
                 y=df['GAIN %'],
@@ -1061,203 +658,163 @@ def main() -> None:
                 marker=dict(
                     size=bubble_sizes,
                     color=df['GAIN %'],
-                    colorscale=[[0, '#ef4444'], [0.5, '#FFC300'], [1, '#10b981']],
+                    colorscale=[[0, CHART_ROSE], [0.5, CHART_AMBER], [1, CHART_EMERALD]],
                     cmid=0,
-                    line=dict(width=1, color='#EAEAEA'),
-                    opacity=0.8
+                    line=dict(width=1, color="rgba(255,255,255,0.18)"),
+                    opacity=0.85,
                 ),
                 text=df['SYMBOL'],
                 textposition='top center',
-                textfont=dict(size=9, color='#EAEAEA'),
+                textfont=dict(size=9, color=CHART_INK),
                 hovertemplate="<b>%{text}</b><br>Weight: %{x:.1f}%<br>Return: %{y:.2f}%<br>Value: ₹%{customdata:,.0f}<extra></extra>",
-                customdata=df['CURR. VALUE']
+                customdata=df['CURR. VALUE'],
             ))
-            
-            # Add quadrant lines
-            fig_scatter.add_hline(y=0, line_dash="dash", line_color="#888888", line_width=1)
+
+            fig_scatter.add_hline(y=0, line_dash="dash", line_color=CHART_INK_SUBTLE, line_width=1)
             avg_weight = df['WT'].mean()
-            fig_scatter.add_vline(x=avg_weight, line_dash="dash", line_color="#888888", line_width=1,
-                                 annotation_text=f"Avg Wt: {avg_weight:.1f}%", annotation_position="top")
-            
-            fig_scatter.update_layout(
-                template='plotly_dark',
-                plot_bgcolor='rgba(0,0,0,0)',
-                paper_bgcolor='rgba(0,0,0,0)',
-                font=dict(color="#EAEAEA"),
+            fig_scatter.add_vline(
+                x=avg_weight, line_dash="dash", line_color=CHART_INK_SUBTLE, line_width=1,
+                annotation_text=f"Avg Wt: {avg_weight:.1f}%", annotation_position="top",
+            )
+
+            _apply_obsidian(
+                fig_scatter, height=400, show_legend=False,
                 margin=dict(l=10, r=10, t=50, b=50),
-                title=dict(text="Weight vs Return Matrix", font=dict(size=12, color='#888888'), x=0, xanchor='left'),
-                xaxis=dict(title='Portfolio Weight (%)', gridcolor='rgba(255,255,255,0.05)'),
-                yaxis=dict(title='Gain/Loss (%)', gridcolor='rgba(255,255,255,0.05)'),
-                height=400,
-                showlegend=False
+                title="Weight vs Return Matrix",
+                x_title="Portfolio Weight (%)",
+                y_title="Gain/Loss (%)",
             )
             st.plotly_chart(fig_scatter, width='stretch')
-            
-            # =========================================================================
-            # CONTRIBUTION WATERFALL
-            # =========================================================================
-            st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
-            st.markdown("""
-                <div class='section'>
-                    <div class='section-header'>
-                        <h3 class='section-title'>Return Attribution</h3>
-                        <p class='section-subtitle'>Contribution of each holding to total portfolio return</p>
-                    </div>
-                </div>
-            """, unsafe_allow_html=True)
-            
-            # Sort by contribution
+
+            # ── Return Attribution ──────────────────────────────────────────
+            render_section_header(
+                "Return Attribution",
+                "Contribution of each holding to total portfolio return",
+                icon="bar-chart",
+            )
+
             contrib_sorted = df.sort_values('WEIGHTED RETURN %', ascending=False).copy()
-            
             fig_waterfall = go.Figure()
-            
-            colors = ['#10b981' if x >= 0 else '#ef4444' for x in contrib_sorted['WEIGHTED RETURN %']]
-            
+            colors = [CHART_EMERALD if x >= 0 else CHART_ROSE for x in contrib_sorted['WEIGHTED RETURN %']]
             fig_waterfall.add_trace(go.Bar(
                 x=contrib_sorted['SYMBOL'],
                 y=contrib_sorted['WEIGHTED RETURN %'],
                 marker_color=colors,
                 text=[f"{x:+.2f}%" for x in contrib_sorted['WEIGHTED RETURN %']],
                 textposition='outside',
-                textfont=dict(size=10, color='#EAEAEA'),
+                textfont=dict(size=10, color=CHART_INK),
                 hovertemplate="<b>%{x}</b><br>Contribution: %{y:.3f}%<br>Return: %{customdata[0]:.1f}%<br>Weight: %{customdata[1]:.1f}%<extra></extra>",
-                customdata=contrib_sorted[['GAIN %', 'WT']].values
+                customdata=contrib_sorted[['GAIN %', 'WT']].values,
             ))
-            
-            fig_waterfall.update_layout(
-                template='plotly_dark',
-                plot_bgcolor='rgba(0,0,0,0)',
-                paper_bgcolor='rgba(0,0,0,0)',
-                font=dict(color="#EAEAEA"),
+            _apply_obsidian(
+                fig_waterfall, height=400, show_legend=False,
                 margin=dict(l=10, r=10, t=50, b=60),
-                title=dict(text="Weighted Return Contribution (Sorted by Impact)", font=dict(size=12, color='#888888'), x=0, xanchor='left'),
-                xaxis=dict(tickangle=45, gridcolor='rgba(255,255,255,0.05)'),
-                yaxis=dict(title='Contribution (%)', gridcolor='rgba(255,255,255,0.05)'),
-                height=400,
-                showlegend=False
+                title="Weighted Return Contribution · sorted by impact",
+                y_title="Contribution (%)",
             )
+            fig_waterfall.update_xaxes(tickangle=45)
             st.plotly_chart(fig_waterfall, width='stretch')
-            
-            # =========================================================================
-            # PORTFOLIO COMPOSITION TREEMAP
-            # =========================================================================
-            st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
-            st.markdown("""
-                <div class='section'>
-                    <div class='section-header'>
-                        <h3 class='section-title'>Portfolio Composition</h3>
-                        <p class='section-subtitle'>Asset allocation by current value</p>
-                    </div>
-                </div>
-            """, unsafe_allow_html=True)
-            
-            # Dynamic color scale logic
+
+            # ── Portfolio Composition ───────────────────────────────────────
+            render_section_header(
+                "Portfolio Composition",
+                "Asset allocation by current value",
+                icon="grid",
+                accent="cyan",
+            )
+
             min_gain_pct = df['GAIN %'].min()
             max_gain_pct = df['GAIN %'].max()
-            
-            color_scale_config = {}
-            
+            color_scale_config: dict = {}
             if min_gain_pct >= 0:
-                color_scale_config['color_continuous_scale'] = ['#FFC300', '#10b981']
+                color_scale_config['color_continuous_scale'] = [CHART_AMBER, CHART_EMERALD]
                 color_scale_config['range_color'] = [min_gain_pct, max_gain_pct]
             elif max_gain_pct <= 0:
-                color_scale_config['color_continuous_scale'] = ['#f87171', '#ef4444']
+                color_scale_config['color_continuous_scale'] = ["#F07075", CHART_ROSE]
                 color_scale_config['range_color'] = [min_gain_pct, max_gain_pct]
             else:
-                color_scale_config['color_continuous_scale'] = ['#ef4444', '#FFC300', '#10b981']
+                color_scale_config['color_continuous_scale'] = [CHART_ROSE, CHART_AMBER, CHART_EMERALD]
                 color_scale_config['color_continuous_midpoint'] = 0
-            
+
             fig_treemap = px.treemap(
                 df,
                 path=['SYMBOL'],
                 values='CURR. VALUE',
                 color='GAIN %',
-                **color_scale_config 
+                **color_scale_config,
             )
             fig_treemap.update_layout(
                 margin=dict(t=50, l=10, r=10, b=10),
                 paper_bgcolor='rgba(0,0,0,0)',
-                font_color='#EAEAEA',
-                title=dict(text="Value Allocation (Color = Gain/Loss %)", font=dict(size=12, color='#888888'), x=0, xanchor='left'),
-                height=400
+                plot_bgcolor='rgba(0,0,0,0)',
+                font=PLOTLY_FONT,
+                title=dict(
+                    text="Value Allocation · color = Gain/Loss %",
+                    font=dict(size=12, color=CHART_INK_SUBTLE, family="JetBrains Mono, monospace"),
+                    x=0, xanchor='left',
+                ),
+                height=400,
             )
             st.plotly_chart(fig_treemap, width='stretch')
 
         with tab2:
-            # Portfolio Holdings Table
-            st.markdown("""
-                <div class='section'>
-                    <div class='section-header'>
-                        <h3 class='section-title'>Portfolio Holdings</h3>
-                        <p class='section-subtitle'>Detailed view of all investments (Current Price is near real-time)</p>
-                    </div>
-                </div>
-            """, unsafe_allow_html=True)
-            
-            display_df = df[['ASSET NAME', 'SYMBOL', 'QUANTITY', 'AVERAGE PRICE', 'INVESTED', 
+            render_section_header(
+                "Portfolio Holdings",
+                "Detailed view of all investments · current price is near real-time",
+                icon="database",
+            )
+
+            display_df = df[['ASSET NAME', 'SYMBOL', 'QUANTITY', 'AVERAGE PRICE', 'INVESTED',
                              'CURRENT PRICE', 'CURR. VALUE', 'GAIN', 'GAIN %', 'WT']].copy()
-            
-            # Add rank column
+
             display_df['RANK'] = display_df['CURR. VALUE'].rank(ascending=False).astype(int)
             display_df = display_df.sort_values('RANK')
-            
-            # Format columns
+
             display_df['AVERAGE PRICE'] = display_df['AVERAGE PRICE'].apply(format_currency)
             display_df['INVESTED'] = display_df['INVESTED'].apply(format_currency)
             display_df['CURRENT PRICE'] = display_df['CURRENT PRICE'].apply(format_currency)
-            
+
             def format_gain(x):
-                color = 'var(--success-green)' if x >= 0 else 'var(--danger-red)'
-                return f"<span style='color: {color}'>{format_currency(x)}</span>"
-            
+                color = 'var(--emerald)' if x >= 0 else 'var(--rose)'
+                return f"<span style='color:{color};font-weight:600;'>{format_currency(x)}</span>"
+
             def format_gain_pct(x):
-                color = 'var(--success-green)' if x >= 0 else 'var(--danger-red)'
-                return f"<span style='color: {color}'>{x:.2f}%</span>"
+                color = 'var(--emerald)' if x >= 0 else 'var(--rose)'
+                return f"<span style='color:{color};font-weight:600;'>{x:.2f}%</span>"
 
             display_df['CURR. VALUE'] = display_df['CURR. VALUE'].apply(format_currency)
             display_df['GAIN'] = display_df['GAIN'].apply(format_gain)
             display_df['GAIN %'] = display_df['GAIN %'].apply(format_gain_pct)
             display_df['WT'] = display_df['WT'].apply(lambda x: f"{x:.2f}%")
-            
-            display_cols = ['RANK', 'ASSET NAME', 'SYMBOL', 'QUANTITY', 'AVERAGE PRICE', 'CURRENT PRICE', 
-                           'INVESTED', 'CURR. VALUE', 'GAIN', 'GAIN %', 'WT']
+
+            display_cols = ['RANK', 'ASSET NAME', 'SYMBOL', 'QUANTITY', 'AVERAGE PRICE', 'CURRENT PRICE',
+                            'INVESTED', 'CURR. VALUE', 'GAIN', 'GAIN %', 'WT']
             display_df = display_df[display_cols]
-            
-            st.markdown(f"""
-                <div class='table-container'>
-                    <table class='table'>
-                        {display_df.to_html(escape=False, index=False, classes='table')}
-                    </table>
-                </div>
-            """, unsafe_allow_html=True)
-            
-            # Export button
-            excel_data = to_excel(df)
+
+            table_html = display_df.to_html(
+                escape=False,
+                index=False,
+                border=0,
+                classes="portfolio-table",
+            )
+            st.markdown(f'<div class="portfolio-table">{table_html}</div>',
+                        unsafe_allow_html=True)
+
             st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+
+            excel_data = to_excel(df)
             st.download_button(
                 "Export Raw Portfolio Data (Excel)",
                 excel_data,
                 file_name=f"Samhita_portfolio_details_{datetime.now().strftime('%Y%m%d')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheet.sheet"
+                mime="application/vnd.openxmlformats-officedocument.spreadsheet.sheet",
             )
         
         with tab3:
-            # Holdings Analytics Tab - Institutional Grade
-            st.markdown("""
-                <div class='section'>
-                    <div class='section-header'>
-                        <h3 class='section-title'>Holdings Analytics</h3>
-                        <p class='section-subtitle'>Institutional-grade concentration, diversification & risk decomposition</p>
-                    </div>
-                </div>
-            """, unsafe_allow_html=True)
-            
-            # Calculate advanced metrics
             n_holdings = len(df)
-            weights = df['WT'].values / 100  # Convert to decimal
+            weights = df['WT'].values / 100
             returns = df['GAIN %'].values / 100
-            
-            # Concentration metrics
+
             hhi = (df['WT'] ** 2).sum()
             effective_n = 10000 / hhi if hhi > 0 else n_holdings
             gini = 0
@@ -1265,248 +822,151 @@ def main() -> None:
                 sorted_weights = np.sort(weights)
                 cum_weights = np.cumsum(sorted_weights)
                 gini = 1 - 2 * np.sum(cum_weights) / (n_holdings * cum_weights[-1]) if cum_weights[-1] > 0 else 0
-            
-            # Diversification ratio (simplified)
+
             avg_weight = weights.mean()
             weight_std = weights.std()
             div_ratio = 1 / (hhi / 10000) if hhi > 0 else n_holdings
-            
-            # Row 1: Concentration Metrics
-            st.markdown("#### Concentration Metrics")
+
+            render_section_header("Concentration Metrics", icon="layers", accent="cyan")
             c1, c2, c3, c4, c5, c6 = st.columns(6)
-            
+
             with c1:
-                st.markdown(f"""
-                    <div class='metric-card primary'>
-                        <h4>Holdings</h4>
-                        <h2>{n_holdings}</h2>
-                        <div class='sub-metric'>Unique positions</div>
-                    </div>
-                """, unsafe_allow_html=True)
-            
+                render_metric_card("Holdings", f"{n_holdings}", subtext="Unique positions",
+                                   color_class="warning")
             with c2:
                 top5 = metrics['Top 5 Concentration']
-                cls = 'warning' if top5 > 60 else 'success'
-                st.markdown(f"""
-                    <div class='metric-card {cls}'>
-                        <h4>Top 5</h4>
-                        <h2>{top5:.1f}%</h2>
-                        <div class='sub-metric'>Concentration</div>
-                    </div>
-                """, unsafe_allow_html=True)
-            
+                render_metric_card("Top 5", f"{top5:.1f}%", subtext="Concentration",
+                                   color_class='warning' if top5 > 60 else 'success')
             with c3:
                 top10 = df['WT'].nlargest(10).sum()
-                cls = 'warning' if top10 > 80 else 'success'
-                st.markdown(f"""
-                    <div class='metric-card {cls}'>
-                        <h4>Top 10</h4>
-                        <h2>{top10:.1f}%</h2>
-                        <div class='sub-metric'>Concentration</div>
-                    </div>
-                """, unsafe_allow_html=True)
-            
+                render_metric_card("Top 10", f"{top10:.1f}%", subtext="Concentration",
+                                   color_class='warning' if top10 > 80 else 'success')
             with c4:
-                st.markdown(f"""
-                    <div class='metric-card info'>
-                        <h4>Effective N</h4>
-                        <h2>{effective_n:.1f}</h2>
-                        <div class='sub-metric'>1/HHI equivalent</div>
-                    </div>
-                """, unsafe_allow_html=True)
-            
+                render_metric_card("Effective N", f"{effective_n:.1f}",
+                                   subtext="1/HHI equivalent", color_class="info")
             with c5:
-                cls = 'warning' if hhi > 1500 else 'success'
-                st.markdown(f"""
-                    <div class='metric-card {cls}'>
-                        <h4>HHI</h4>
-                        <h2>{hhi:.0f}</h2>
-                        <div class='sub-metric'><1500 = diverse</div>
-                    </div>
-                """, unsafe_allow_html=True)
-            
+                render_metric_card("HHI", f"{hhi:.0f}", subtext="<1500 = diverse",
+                                   color_class='warning' if hhi > 1500 else 'success')
             with c6:
-                st.markdown(f"""
-                    <div class='metric-card neutral'>
-                        <h4>Gini Coeff</h4>
-                        <h2>{gini:.2f}</h2>
-                        <div class='sub-metric'>0=equal, 1=conc</div>
-                    </div>
-                """, unsafe_allow_html=True)
-            
-            # Row 2: Performance Distribution
-            st.markdown("#### Performance Distribution")
+                render_metric_card("Gini Coeff", f"{gini:.2f}",
+                                   subtext="0 = equal · 1 = concentrated",
+                                   color_class="neutral")
+
+            st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+
+            render_section_header("Performance Distribution", icon="bar-chart", accent="emerald")
             c1, c2, c3, c4, c5, c6 = st.columns(6)
-            
+
             profitable = (df['GAIN %'] > 0).sum()
             losing = (df['GAIN %'] < 0).sum()
             breakeven = n_holdings - profitable - losing
             win_rate = profitable / n_holdings * 100 if n_holdings > 0 else 0
-            
+
             with c1:
-                st.markdown(f"""
-                    <div class='metric-card success'>
-                        <h4>Winners</h4>
-                        <h2>{profitable}</h2>
-                        <div class='sub-metric'>Profitable</div>
-                    </div>
-                """, unsafe_allow_html=True)
-            
+                render_metric_card("Winners", f"{profitable}", subtext="Profitable",
+                                   color_class="success")
             with c2:
-                st.markdown(f"""
-                    <div class='metric-card danger'>
-                        <h4>Losers</h4>
-                        <h2>{losing}</h2>
-                        <div class='sub-metric'>Underwater</div>
-                    </div>
-                """, unsafe_allow_html=True)
-            
+                render_metric_card("Losers", f"{losing}", subtext="Underwater",
+                                   color_class="danger")
             with c3:
                 cls = 'success' if win_rate > 60 else 'warning' if win_rate > 40 else 'danger'
-                st.markdown(f"""
-                    <div class='metric-card {cls}'>
-                        <h4>Win Rate</h4>
-                        <h2>{win_rate:.0f}%</h2>
-                        <div class='sub-metric'>Batting avg</div>
-                    </div>
-                """, unsafe_allow_html=True)
-            
+                render_metric_card("Win Rate", f"{win_rate:.0f}%", subtext="Batting avg",
+                                   color_class=cls)
             with c4:
                 avg_gain = df['GAIN %'].mean()
-                cls = 'success' if avg_gain > 0 else 'danger'
-                st.markdown(f"""
-                    <div class='metric-card {cls}'>
-                        <h4>Avg Return</h4>
-                        <h2>{avg_gain:+.1f}%</h2>
-                        <div class='sub-metric'>Mean gain</div>
-                    </div>
-                """, unsafe_allow_html=True)
-            
+                render_metric_card("Avg Return", f"{avg_gain:+.1f}%", subtext="Mean gain",
+                                   color_class='success' if avg_gain > 0 else 'danger')
             with c5:
                 median_gain = df['GAIN %'].median()
-                cls = 'success' if median_gain > 0 else 'danger'
-                st.markdown(f"""
-                    <div class='metric-card {cls}'>
-                        <h4>Median Return</h4>
-                        <h2>{median_gain:+.1f}%</h2>
-                        <div class='sub-metric'>50th percentile</div>
-                    </div>
-                """, unsafe_allow_html=True)
-            
+                render_metric_card("Median Return", f"{median_gain:+.1f}%",
+                                   subtext="50th percentile",
+                                   color_class='success' if median_gain > 0 else 'danger')
             with c6:
                 gain_std = df['GAIN %'].std()
-                st.markdown(f"""
-                    <div class='metric-card warning'>
-                        <h4>Return Dispersion</h4>
-                        <h2>{gain_std:.1f}%</h2>
-                        <div class='sub-metric'>Std deviation</div>
-                    </div>
-                """, unsafe_allow_html=True)
-            
-            st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
-            
-            # Charts Row
+                render_metric_card("Return Dispersion", f"{gain_std:.1f}%",
+                                   subtext="Std deviation", color_class="warning")
+
+
             col_pie, col_lorenz = st.columns(2)
-            
+
             with col_pie:
-                st.markdown("#### Weight Distribution")
-                
-                # Treemap for weight distribution
+                render_section_header("Weight Distribution", icon="grid", accent="cyan")
                 fig_tree = px.treemap(
                     df,
                     path=['SYMBOL'],
                     values='WT',
                     color='GAIN %',
-                    color_continuous_scale=['#ef4444', '#FFC300', '#10b981'],
-                    color_continuous_midpoint=0
+                    color_continuous_scale=[CHART_ROSE, CHART_AMBER, CHART_EMERALD],
+                    color_continuous_midpoint=0,
                 )
                 fig_tree.update_layout(
                     margin=dict(t=50, l=10, r=10, b=10),
                     paper_bgcolor='rgba(0,0,0,0)',
-                    font_color='#EAEAEA',
-                    title=dict(text="Weight % (Color = Gain/Loss)", font=dict(size=11, color='#888888'), x=0, xanchor='left'),
-                    height=340
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    font=PLOTLY_FONT,
+                    title=dict(text="Weight % · color = Gain/Loss",
+                               font=dict(size=11, color=CHART_INK_SUBTLE, family="JetBrains Mono, monospace"),
+                               x=0, xanchor='left'),
+                    height=340,
                 )
                 fig_tree.update_coloraxes(showscale=False)
                 st.plotly_chart(fig_tree, width="stretch")
-            
+
             with col_lorenz:
-                st.markdown("#### Concentration Curve")
-                
-                # Lorenz curve
+                render_section_header("Concentration Curve", icon="activity", accent="violet")
                 sorted_weights = np.sort(df['WT'].values)[::-1]
                 cum_weights = np.cumsum(sorted_weights)
                 n = len(sorted_weights)
-                
+
                 fig_lorenz = go.Figure()
-                
-                # Perfect equality line
                 fig_lorenz.add_trace(go.Scatter(
                     x=list(range(n + 1)),
                     y=[0] + list(np.linspace(0, 100, n)),
                     mode='lines',
                     name='Equal Weight',
-                    line=dict(color='#888888', dash='dash', width=1)
+                    line=dict(color=CHART_INK_SUBTLE, dash='dash', width=1),
                 ))
-                
-                # Actual concentration curve
                 fig_lorenz.add_trace(go.Scatter(
                     x=list(range(n + 1)),
                     y=[0] + list(cum_weights),
                     mode='lines+markers',
                     name='Portfolio',
-                    line=dict(color='#FFC300', width=2),
+                    line=dict(color=CHART_AMBER, width=2),
                     marker=dict(size=4),
                     fill='tonexty',
-                    fillcolor='rgba(255, 195, 0, 0.15)'
+                    fillcolor=CHART_AMBER_GLOW,
                 ))
-                
-                # Key thresholds
-                fig_lorenz.add_hline(y=50, line_dash="dot", line_color="#10b981", 
+                fig_lorenz.add_hline(y=50, line_dash="dot", line_color=CHART_EMERALD,
                                     annotation_text="50%", annotation_position="right")
-                fig_lorenz.add_hline(y=80, line_dash="dot", line_color="#06b6d4",
+                fig_lorenz.add_hline(y=80, line_dash="dot", line_color=CHART_CYAN,
                                     annotation_text="80%", annotation_position="right")
-                
-                fig_lorenz.update_layout(
-                    template='plotly_dark',
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    font=dict(color="#EAEAEA"),
+                _apply_obsidian(
+                    fig_lorenz, height=340, show_legend=True,
                     margin=dict(l=10, r=10, t=50, b=45),
-                    title=dict(text="Lorenz Curve (Cumulative %)", font=dict(size=11, color='#888888'), x=0, xanchor='left'),
-                    xaxis=dict(title='# Holdings (ranked)', gridcolor='rgba(255,255,255,0.05)'),
-                    yaxis=dict(title='Cumulative Weight (%)', gridcolor='rgba(255,255,255,0.05)', range=[0, 105]),
-                    height=340,
-                    showlegend=True,
-                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                    title="Lorenz Curve · cumulative %",
+                    x_title='# Holdings (ranked)',
+                    y_title='Cumulative Weight (%)',
                 )
+                fig_lorenz.update_yaxes(range=[0, 105])
                 st.plotly_chart(fig_lorenz, width="stretch")
-            
-            st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
-            
-            # Risk Contribution Table
-            st.markdown("#### Risk & Return Contribution")
-            
-            # Calculate contribution metrics
+
+
+            render_section_header("Risk & Return Contribution", icon="shield", accent="rose")
+
             contrib_df = df[['SYMBOL', 'ASSET NAME', 'WT', 'GAIN %', 'WEIGHTED RETURN %']].copy()
             contrib_df['Weight'] = contrib_df['WT'].apply(lambda x: f"{x:.2f}%")
             contrib_df['Return'] = contrib_df['GAIN %'].apply(lambda x: f"{x:+.2f}%")
             contrib_df['Contribution'] = contrib_df['WEIGHTED RETURN %'].apply(lambda x: f"{x:+.3f}%")
-            
-            # Risk contribution (simplified - weight^2 as proxy)
             contrib_df['Risk Weight'] = (contrib_df['WT'] ** 2) / hhi * 100
             contrib_df['Risk Contrib'] = contrib_df['Risk Weight'].apply(lambda x: f"{x:.1f}%")
-            
-            # Sort by contribution
             contrib_df = contrib_df.sort_values('WEIGHTED RETURN %', ascending=False)
-            
-            # Create horizontal bar chart
+
             fig_contrib = make_subplots(rows=1, cols=2, shared_yaxes=True,
-                                       subplot_titles=('Return Contribution', 'Risk Contribution'),
-                                       horizontal_spacing=0.02)
-            
-            colors_ret = ['#10b981' if x >= 0 else '#ef4444' for x in contrib_df['WEIGHTED RETURN %']]
-            
+                                        subplot_titles=('Return Contribution', 'Risk Contribution'),
+                                        horizontal_spacing=0.02)
+
+            colors_ret = [CHART_EMERALD if x >= 0 else CHART_ROSE for x in contrib_df['WEIGHTED RETURN %']]
+
             fig_contrib.add_trace(go.Bar(
                 y=contrib_df['SYMBOL'],
                 x=contrib_df['WEIGHTED RETURN %'],
@@ -1514,38 +974,42 @@ def main() -> None:
                 marker_color=colors_ret,
                 text=[f"{x:.2f}%" for x in contrib_df['WEIGHTED RETURN %']],
                 textposition='outside',
-                textfont=dict(size=9),
-                showlegend=False
+                textfont=dict(size=9, color=CHART_INK),
+                showlegend=False,
             ), row=1, col=1)
-            
+
             fig_contrib.add_trace(go.Bar(
                 y=contrib_df['SYMBOL'],
                 x=contrib_df['Risk Weight'],
                 orientation='h',
-                marker_color='#FFC300',
+                marker_color=CHART_AMBER,
                 text=[f"{x:.1f}%" for x in contrib_df['Risk Weight']],
                 textposition='outside',
-                textfont=dict(size=9),
-                showlegend=False
+                textfont=dict(size=9, color=CHART_INK),
+                showlegend=False,
             ), row=1, col=2)
-            
+
             fig_contrib.update_layout(
-                template='plotly_dark',
-                plot_bgcolor='rgba(0,0,0,0)',
                 paper_bgcolor='rgba(0,0,0,0)',
-                font=dict(color="#EAEAEA", size=10),
+                plot_bgcolor='rgba(0,0,0,0)',
+                font=PLOTLY_FONT,
                 margin=dict(l=10, r=60, t=50, b=40),
                 height=max(350, n_holdings * 22 + 80),
-                showlegend=False
+                showlegend=False,
+                hoverlabel=PLOTLY_HOVERLABEL,
             )
-            
-            fig_contrib.update_xaxes(gridcolor='rgba(255,255,255,0.05)')
-            fig_contrib.update_yaxes(gridcolor='rgba(255,255,255,0.05)')
-            
+
+            fig_contrib.update_xaxes(gridcolor=CHART_GRID, zeroline=False,
+                                     tickfont=dict(size=9, family="JetBrains Mono, monospace",
+                                                   color=CHART_INK_SUBTLE))
+            fig_contrib.update_yaxes(gridcolor=CHART_GRID, zeroline=False,
+                                     tickfont=dict(size=9, family="JetBrains Mono, monospace",
+                                                   color=CHART_INK_SUBTLE))
+
             st.plotly_chart(fig_contrib, width="stretch")
             
             # Summary Statistics in expander
-            with st.expander("📊 Detailed Statistics", expanded=False):
+            with st.expander("Detailed Statistics", expanded=False):
                 col_s1, col_s2, col_s3, col_s4 = st.columns(4)
                 
                 with col_s1:
@@ -1591,17 +1055,26 @@ def main() -> None:
     # =========================================================================
     # ANALYSIS MODE
     # =========================================================================
-    if view_mode == "📉 Analysis Mode":
+    if view_mode == "Analysis Mode":
         render_analysis_mode(df, metrics, anchor_date)
     
-    # =========================================================================
-    # FOOTER
-    # =========================================================================
+    # ── Footer ──────────────────────────────────────────────────────────────
     st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
     utc_now = datetime.now(timezone.utc)
     ist_now = utc_now + timedelta(hours=5, minutes=30)
     current_time_ist = ist_now.strftime("%Y-%m-%d %H:%M:%S IST")
-    st.caption(f"© 2026 {PRODUCT_NAME} | {COMPANY} | {VERSION} | {current_time_ist}")
+    st.markdown(
+        f"""
+        <div style="display:flex; justify-content:space-between; align-items:center;
+                    font-family: var(--data); font-size: 0.72rem;
+                    color: var(--ink-tertiary); padding: var(--sp-3) 0;
+                    text-transform: uppercase; letter-spacing: 0.14em;">
+            <span>© 2026 {PRODUCT_NAME} · {COMPANY}</span>
+            <span>{VERSION} · {current_time_ist}</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 # =========================================================================
@@ -1904,27 +1377,19 @@ def compute_metrics(
 def render_analysis_mode(
     df: pd.DataFrame, metrics: dict[str, float], anchor_date: datetime | None = None
 ) -> None:
-    """Render Bloomberg Terminal style analytics."""
-    
-    st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
-    
-    # =========================================================================
-    # HEADER & TIMEFRAME SELECTOR
-    # =========================================================================
-    
-    # Show anchor date info if active
-    anchor_info = ""
+    """Render the Obsidian Quant analytics terminal."""
+
+
+    # ── Header & timeframe selector ─────────────────────────────────────────
+    header_desc = "Institutional-Grade Performance Analysis"
     if anchor_date:
-        anchor_info = f'<span style="color: #06b6d4; font-size: 0.8rem; margin-left: 1rem;">📌 Anchor: {anchor_date.strftime("%b %d, %Y")}</span>'
-    
-    st.markdown(f"""
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
-            <div>
-                <h2 style="margin: 0; color: #FFC300;">Portfolio Analytics Terminal{anchor_info}</h2>
-                <p style="margin: 0; color: #888888; font-size: 0.9rem;">Institutional-Grade Performance Analysis</p>
-            </div>
-        </div>
-    """, unsafe_allow_html=True)
+        header_desc += f" · Anchor: {anchor_date.strftime('%b %d, %Y')}"
+    render_section_header(
+        "Portfolio Analytics Terminal",
+        header_desc,
+        icon="cpu",
+        accent="cyan",
+    )
     
     # Initialize session state
     if 'tf_selected' not in st.session_state:
@@ -1932,9 +1397,7 @@ def render_analysis_mode(
     
     # Timeframe buttons row (disabled when anchor date is active)
     if anchor_date:
-        # Show toast notification
-        st.toast(f"📅 Anchor Date Active: Metrics from {anchor_date.strftime('%b %d, %Y')}", icon="📌")
-        # Calculate days from anchor date to today
+        st.toast(f"Anchor date active · metrics from {anchor_date.strftime('%b %d, %Y')}")
         days_back = (datetime.now().date() - anchor_date).days + 1
         selected_tf = "CUSTOM"
         
@@ -2008,25 +1471,20 @@ def render_analysis_mode(
     # MAIN COMPARISON CHART
     # =========================================================================
     
-    st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
     
-    # Normalize to 100
     port_norm = (port_value / port_value.iloc[0]) * 100
-    
+
     fig = go.Figure()
-    
-    # Portfolio trace
     port_ret_display = m.get('total_return', 0)
     fig.add_trace(go.Scatter(
         x=port_norm.index,
         y=port_norm.values,
         mode='lines',
         name=f'Portfolio ({port_ret_display:+.2f}%)',
-        line=dict(color='#FFC300', width=2.5),
-        hovertemplate='%{x|%b %d, %Y}<br>Portfolio: %{y:.2f}<extra></extra>'
+        line=dict(color=CHART_AMBER, width=2.5),
+        hovertemplate='%{x|%b %d, %Y}<br>Portfolio: %{y:.2f}<extra></extra>',
     ))
-    
-    # Benchmark trace (NIFTY 50 only)
+
     if not benchmark_prices.empty and BENCHMARK_NAME in benchmark_prices.columns:
         bench_series = benchmark_prices[BENCHMARK_NAME].dropna()
         if len(bench_series) > 0:
@@ -2037,282 +1495,134 @@ def render_analysis_mode(
                 y=bench_norm.values,
                 mode='lines',
                 name=f'{BENCHMARK_NAME} ({bench_ret:+.2f}%)',
-                line=dict(color='#06b6d4', width=2, dash='dot'),
-                hovertemplate=f'%{{x|%b %d, %Y}}<br>{BENCHMARK_NAME}: %{{y:.2f}}<extra></extra>'
+                line=dict(color=CHART_CYAN, width=2, dash='dot'),
+                hovertemplate=f'%{{x|%b %d, %Y}}<br>{BENCHMARK_NAME}: %{{y:.2f}}<extra></extra>',
             ))
-    
-    # Layout
-    fig.update_layout(
-        template='plotly_dark',
-        plot_bgcolor='rgba(0,0,0,0)',
-        paper_bgcolor='rgba(0,0,0,0)',
-        font=dict(color="#EAEAEA", size=12),
-        margin=dict(l=10, r=10, t=10, b=10),
-        xaxis=dict(
-            gridcolor='rgba(255,255,255,0.05)',
-            showgrid=True,
-            showspikes=False
-        ),
-        yaxis=dict(
-            gridcolor='rgba(255,255,255,0.05)',
-            showgrid=True,
-            title='',
-            side='right',
-            showspikes=False
-        ),
-        height=420,
-        showlegend=True,
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="center",
-            x=0.5,
-            bgcolor='rgba(0,0,0,0)',
-            font=dict(size=11)
-        ),
-        hovermode='closest'
+
+    _apply_obsidian(
+        fig, height=420, show_legend=True,
+        margin=dict(l=10, r=10, t=20, b=10),
     )
-    
-    # Range selector settings
-    fig.update_xaxes(
-        rangeslider=dict(visible=False),
-        rangeselector=dict(visible=False)
-    )
-    
+    fig.update_yaxes(side='right')
+    fig.update_layout(hovermode='closest')
+    fig.update_xaxes(rangeslider=dict(visible=False), rangeselector=dict(visible=False))
+
     st.plotly_chart(fig, width="stretch", config={
         'displayModeBar': True,
         'displaylogo': False,
-        'modeBarButtonsToRemove': ['lasso2d', 'select2d']
+        'modeBarButtonsToRemove': ['lasso2d', 'select2d'],
     })
-    
-    # =========================================================================
-    # PERFORMANCE SUMMARY - ROW 1 (Returns & Risk-Adjusted)
-    # =========================================================================
-    
-    st.markdown("#### Returns & Risk-Adjusted Performance")
-    
+
+    st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+
+    # ── Returns & Risk-Adjusted Performance ─────────────────────────────────
+    render_section_header("Returns & Risk-Adjusted Performance", icon="zap", accent="emerald")
     c1, c2, c3, c4, c5, c6 = st.columns(6)
-    
+
     with c1:
         val = m.get('total_return', 0)
-        cls = 'success' if val >= 0 else 'danger'
-        st.markdown(f"""
-            <div class='metric-card {cls}'>
-                <h4>Period Return</h4>
-                <h2>{val:+.2f}%</h2>
-                <div class='sub-metric'>CAGR: {m.get('cagr', 0):+.1f}%</div>
-            </div>
-        """, unsafe_allow_html=True)
-    
+        render_metric_card("Period Return", f"{val:+.2f}%",
+                           subtext=f"CAGR: {m.get('cagr', 0):+.1f}%",
+                           color_class='success' if val >= 0 else 'danger')
     with c2:
         alpha = m.get('alpha', 0)
         cls = 'success' if alpha > 0 else 'danger' if alpha < 0 else 'neutral'
-        st.markdown(f"""
-            <div class='metric-card {cls}'>
-                <h4>Alpha</h4>
-                <h2>{alpha:+.2f}%</h2>
-                <div class='sub-metric'>Excess return</div>
-            </div>
-        """, unsafe_allow_html=True)
-    
+        render_metric_card("Alpha", f"{alpha:+.2f}%", subtext="Excess return",
+                           color_class=cls)
     with c3:
         sharpe = m.get('sharpe', 0)
         cls = 'success' if sharpe > 1 else 'warning' if sharpe > 0.5 else 'danger'
-        st.markdown(f"""
-            <div class='metric-card {cls}'>
-                <h4>Sharpe</h4>
-                <h2>{sharpe:.2f}</h2>
-                <div class='sub-metric'>Rf = 6.5%</div>
-            </div>
-        """, unsafe_allow_html=True)
-    
+        render_metric_card("Sharpe", f"{sharpe:.2f}", subtext="Rf = 6.5%",
+                           color_class=cls)
     with c4:
         sortino = m.get('sortino', 0)
         cls = 'success' if sortino > 1.5 else 'warning' if sortino > 0.5 else 'danger'
-        st.markdown(f"""
-            <div class='metric-card {cls}'>
-                <h4>Sortino</h4>
-                <h2>{sortino:.2f}</h2>
-                <div class='sub-metric'>Downside risk</div>
-            </div>
-        """, unsafe_allow_html=True)
-    
+        render_metric_card("Sortino", f"{sortino:.2f}", subtext="Downside risk",
+                           color_class=cls)
     with c5:
         calmar = m.get('calmar', 0)
         cls = 'success' if calmar > 1 else 'warning' if calmar > 0.5 else 'danger'
-        st.markdown(f"""
-            <div class='metric-card {cls}'>
-                <h4>Calmar</h4>
-                <h2>{calmar:.2f}</h2>
-                <div class='sub-metric'>Return/MaxDD</div>
-            </div>
-        """, unsafe_allow_html=True)
-    
+        render_metric_card("Calmar", f"{calmar:.2f}", subtext="Return / MaxDD",
+                           color_class=cls)
     with c6:
         ir = m.get('info_ratio', 0)
         cls = 'success' if ir > 0.5 else 'warning' if ir > 0 else 'danger'
-        st.markdown(f"""
-            <div class='metric-card {cls}'>
-                <h4>Info Ratio</h4>
-                <h2>{ir:.2f}</h2>
-                <div class='sub-metric'>Active return/TE</div>
-            </div>
-        """, unsafe_allow_html=True)
-    
-    # =========================================================================
-    # ROW 2 - RISK METRICS
-    # =========================================================================
-    
-    st.markdown("#### Risk Metrics")
-    
+        render_metric_card("Info Ratio", f"{ir:.2f}", subtext="Active return / TE",
+                           color_class=cls)
+
+    st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+
+    # ── Risk Metrics ────────────────────────────────────────────────────────
+    render_section_header("Risk Metrics", icon="shield", accent="rose")
     c1, c2, c3, c4, c5, c6 = st.columns(6)
-    
+
     with c1:
         vol = m.get('volatility', 0)
-        st.markdown(f"""
-            <div class='metric-card warning'>
-                <h4>Volatility</h4>
-                <h2>{vol:.1f}%</h2>
-                <div class='sub-metric'>Annualized</div>
-            </div>
-        """, unsafe_allow_html=True)
-    
+        render_metric_card("Volatility", f"{vol:.1f}%", subtext="Annualized",
+                           color_class="warning")
     with c2:
         mdd = m.get('max_drawdown', 0)
         cls = 'danger' if mdd < -20 else 'warning' if mdd < -10 else 'success'
-        st.markdown(f"""
-            <div class='metric-card {cls}'>
-                <h4>Max Drawdown</h4>
-                <h2>{mdd:.1f}%</h2>
-                <div class='sub-metric'>Peak to trough</div>
-            </div>
-        """, unsafe_allow_html=True)
-    
+        render_metric_card("Max Drawdown", f"{mdd:.1f}%", subtext="Peak to trough",
+                           color_class=cls)
     with c3:
         var95 = m.get('var_95', 0)
-        st.markdown(f"""
-            <div class='metric-card danger'>
-                <h4>VaR (95%)</h4>
-                <h2>{var95:.2f}%</h2>
-                <div class='sub-metric'>Daily at risk</div>
-            </div>
-        """, unsafe_allow_html=True)
-    
+        render_metric_card("VaR (95%)", f"{var95:.2f}%", subtext="Daily at risk",
+                           color_class="danger")
     with c4:
         cvar = m.get('cvar_95', 0)
-        st.markdown(f"""
-            <div class='metric-card danger'>
-                <h4>CVaR (95%)</h4>
-                <h2>{cvar:.2f}%</h2>
-                <div class='sub-metric'>Expected shortfall</div>
-            </div>
-        """, unsafe_allow_html=True)
-    
+        render_metric_card("CVaR (95%)", f"{cvar:.2f}%", subtext="Expected shortfall",
+                           color_class="danger")
     with c5:
         beta = m.get('beta', 1)
         cls = 'warning' if beta > 1.2 else 'info' if beta < 0.8 else 'neutral'
-        st.markdown(f"""
-            <div class='metric-card {cls}'>
-                <h4>Beta</h4>
-                <h2>{beta:.2f}</h2>
-                <div class='sub-metric'>Market sensitivity</div>
-            </div>
-        """, unsafe_allow_html=True)
-    
+        render_metric_card("Beta", f"{beta:.2f}", subtext="Market sensitivity",
+                           color_class=cls)
     with c6:
         te = m.get('tracking_error', 0)
-        st.markdown(f"""
-            <div class='metric-card info'>
-                <h4>Tracking Error</h4>
-                <h2>{te:.1f}%</h2>
-                <div class='sub-metric'>vs Benchmark</div>
-            </div>
-        """, unsafe_allow_html=True)
-    
-    # =========================================================================
-    # ROW 3 - BENCHMARK COMPARISON
-    # =========================================================================
-    
-    st.markdown("#### Benchmark Comparison")
-    
+        render_metric_card("Tracking Error", f"{te:.1f}%", subtext="vs Benchmark",
+                           color_class="info")
+
+    st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+
+    # ── Benchmark Comparison ────────────────────────────────────────────────
+    render_section_header("Benchmark Comparison", icon="compass", accent="cyan")
     c1, c2, c3, c4, c5, c6 = st.columns(6)
-    
+
     with c1:
         bench_ret = m.get('benchmark_return', 0)
-        cls = 'success' if bench_ret >= 0 else 'danger'
-        st.markdown(f"""
-            <div class='metric-card {cls}'>
-                <h4>Benchmark</h4>
-                <h2>{bench_ret:+.1f}%</h2>
-                <div class='sub-metric'>{BENCHMARK_NAME}</div>
-            </div>
-        """, unsafe_allow_html=True)
-    
+        render_metric_card("Benchmark", f"{bench_ret:+.1f}%", subtext=BENCHMARK_NAME,
+                           color_class='success' if bench_ret >= 0 else 'danger')
     with c2:
         excess = m.get('total_return', 0) - m.get('benchmark_return', 0)
-        cls = 'success' if excess > 0 else 'danger'
-        st.markdown(f"""
-            <div class='metric-card {cls}'>
-                <h4>Excess Return</h4>
-                <h2>{excess:+.1f}%</h2>
-                <div class='sub-metric'>vs Benchmark</div>
-            </div>
-        """, unsafe_allow_html=True)
-    
+        render_metric_card("Excess Return", f"{excess:+.1f}%", subtext="vs Benchmark",
+                           color_class='success' if excess > 0 else 'danger')
     with c3:
         up_cap = m.get('up_capture', 100)
-        cls = 'success' if up_cap > 100 else 'warning'
-        st.markdown(f"""
-            <div class='metric-card {cls}'>
-                <h4>Up Capture</h4>
-                <h2>{up_cap:.0f}%</h2>
-                <div class='sub-metric'>Bull market</div>
-            </div>
-        """, unsafe_allow_html=True)
-    
+        render_metric_card("Up Capture", f"{up_cap:.0f}%", subtext="Bull market",
+                           color_class='success' if up_cap > 100 else 'warning')
     with c4:
         down_cap = m.get('down_capture', 100)
-        cls = 'success' if down_cap < 100 else 'warning'
-        st.markdown(f"""
-            <div class='metric-card {cls}'>
-                <h4>Down Capture</h4>
-                <h2>{down_cap:.0f}%</h2>
-                <div class='sub-metric'>Bear market</div>
-            </div>
-        """, unsafe_allow_html=True)
-    
+        render_metric_card("Down Capture", f"{down_cap:.0f}%", subtext="Bear market",
+                           color_class='success' if down_cap < 100 else 'warning')
     with c5:
         r2 = m.get('r_squared', 0)
-        st.markdown(f"""
-            <div class='metric-card info'>
-                <h4>R-Squared</h4>
-                <h2>{r2:.2f}</h2>
-                <div class='sub-metric'>Explained variance</div>
-            </div>
-        """, unsafe_allow_html=True)
-    
+        render_metric_card("R-Squared", f"{r2:.2f}", subtext="Explained variance",
+                           color_class="info")
     with c6:
         corr = m.get('correlation', 0)
-        st.markdown(f"""
-            <div class='metric-card info'>
-                <h4>Correlation</h4>
-                <h2>{corr:.2f}</h2>
-                <div class='sub-metric'>vs Benchmark</div>
-            </div>
-        """, unsafe_allow_html=True)
+        render_metric_card("Correlation", f"{corr:.2f}", subtext="vs Benchmark",
+                           color_class="info")
     
     # =========================================================================
     # DRAWDOWN & DISTRIBUTION CHARTS
     # =========================================================================
     
-    st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
     
     col_dd, col_dist = st.columns(2)
-    
+
     with col_dd:
-        st.markdown("#### Drawdown Analysis")
-        
+        render_section_header("Drawdown Analysis", icon="activity", accent="rose")
         dd_series = m.get('drawdown_series', pd.Series())
         if len(dd_series) > 0:
             fig_dd = go.Figure()
@@ -2321,185 +1631,136 @@ def render_analysis_mode(
                 y=dd_series.values,
                 mode='lines',
                 fill='tozeroy',
-                line=dict(color='#ef4444', width=1),
-                fillcolor='rgba(239, 68, 68, 0.3)',
-                hovertemplate='%{x|%b %d, %Y}<br>Drawdown: %{y:.2f}%<extra></extra>'
+                line=dict(color=CHART_ROSE, width=1),
+                fillcolor='rgba(232, 85, 90, 0.25)',
+                hovertemplate='%{x|%b %d, %Y}<br>Drawdown: %{y:.2f}%<extra></extra>',
             ))
-            
             fig_dd.add_hline(
                 y=m.get('max_drawdown', 0),
                 line_dash="dash",
-                line_color="#FFC300",
+                line_color=CHART_AMBER,
                 annotation_text=f"Max: {m.get('max_drawdown', 0):.1f}%",
-                annotation_position="right"
+                annotation_position="right",
             )
-            
-            fig_dd.update_layout(
-                template='plotly_dark',
-                plot_bgcolor='rgba(0,0,0,0)',
-                paper_bgcolor='rgba(0,0,0,0)',
-                font=dict(color="#EAEAEA"),
+            _apply_obsidian(
+                fig_dd, height=300, show_legend=False,
                 margin=dict(l=10, r=10, t=50, b=40),
-                title=dict(text="Underwater Equity Curve", font=dict(size=12, color='#888888'), x=0, xanchor='left'),
-                xaxis=dict(gridcolor='rgba(255,255,255,0.05)'),
-                yaxis=dict(gridcolor='rgba(255,255,255,0.05)', title=''),
-                height=300,
-                showlegend=False
+                title="Underwater Equity Curve",
             )
             st.plotly_chart(fig_dd, width="stretch")
-    
+
     with col_dist:
-        st.markdown("#### Returns Distribution")
-        
+        render_section_header("Returns Distribution", icon="bar-chart", accent="emerald")
         fig_hist = go.Figure()
         fig_hist.add_trace(go.Histogram(
             x=port_returns * 100,
             nbinsx=40,
-            marker_color='#FFC300',
-            opacity=0.75,
-            hovertemplate='Return: %{x:.2f}%<br>Count: %{y}<extra></extra>'
+            marker_color=CHART_AMBER,
+            opacity=0.78,
+            hovertemplate='Return: %{x:.2f}%<br>Count: %{y}<extra></extra>',
         ))
-        
-        fig_hist.add_vline(x=0, line_dash="dash", line_color="#888888", line_width=1)
+        fig_hist.add_vline(x=0, line_dash="dash", line_color=CHART_INK_SUBTLE, line_width=1)
         fig_hist.add_vline(
             x=port_returns.mean() * 100,
             line_dash="dot",
-            line_color="#10b981",
+            line_color=CHART_EMERALD,
             annotation_text=f"μ: {port_returns.mean()*100:.2f}%",
-            annotation_position="top"
+            annotation_position="top",
         )
         fig_hist.add_vline(
             x=m.get('var_95', 0),
             line_dash="dash",
-            line_color="#ef4444",
+            line_color=CHART_ROSE,
             annotation_text=f"VaR: {m.get('var_95', 0):.1f}%",
-            annotation_position="bottom left"
+            annotation_position="bottom left",
         )
-        
-        fig_hist.update_layout(
-            template='plotly_dark',
-            plot_bgcolor='rgba(0,0,0,0)',
-            paper_bgcolor='rgba(0,0,0,0)',
-            font=dict(color="#EAEAEA"),
+        _apply_obsidian(
+            fig_hist, height=300, show_legend=False,
             margin=dict(l=10, r=10, t=50, b=40),
-            title=dict(text="Daily Returns Histogram", font=dict(size=12, color='#888888'), x=0, xanchor='left'),
-            xaxis=dict(title='Daily Return (%)', gridcolor='rgba(255,255,255,0.05)'),
-            yaxis=dict(title='', gridcolor='rgba(255,255,255,0.05)'),
-            height=300,
-            showlegend=False
+            title="Daily Returns Histogram",
+            x_title='Daily Return (%)',
         )
         st.plotly_chart(fig_hist, width="stretch")
     
-    # =========================================================================
-    # ROLLING METRICS
-    # =========================================================================
-    
-    # =========================================================================
-    # ROLLING ANALYTICS (Dynamic window based on timeframe)
-    # =========================================================================
-    
-    # Calculate appropriate window based on data length
+    # ── Rolling Analytics (dynamic window based on timeframe) ───────────────
     data_length = len(port_returns)
-    
-    # Dynamic window: use 1/3 of data or cap at 63 days
+
     if data_length < 15:
-        # Not enough data for rolling analytics
         pass
     else:
         rolling_window = min(63, max(10, data_length // 3))
-        
-        st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
-        st.markdown(f"#### Rolling Analytics ({rolling_window}-day)")
-        
+
+        render_section_header(
+            "Rolling Analytics",
+            f"{rolling_window}-day rolling window",
+            icon="activity",
+            accent="violet",
+        )
+
         col_rs, col_rb = st.columns(2)
-        
+
         with col_rs:
-            # Rolling Sharpe
             roll_mean = port_returns.rolling(rolling_window).mean()
             roll_std = port_returns.rolling(rolling_window).std()
             roll_sharpe = (roll_mean / roll_std) * np.sqrt(252)
             roll_sharpe = roll_sharpe.dropna()
-            
+
             if len(roll_sharpe) > 0:
                 fig_rs = go.Figure()
                 fig_rs.add_trace(go.Scatter(
                     x=roll_sharpe.index,
                     y=roll_sharpe.values,
                     mode='lines',
-                    line=dict(color='#FFC300', width=1.5),
-                    hovertemplate='%{x|%b %d, %Y}<br>Sharpe: %{y:.2f}<extra></extra>'
+                    line=dict(color=CHART_AMBER, width=1.5),
+                    hovertemplate='%{x|%b %d, %Y}<br>Sharpe: %{y:.2f}<extra></extra>',
                 ))
-                fig_rs.add_hline(y=1, line_dash="dash", line_color="#10b981", annotation_text="Target", annotation_position="right")
-                fig_rs.add_hline(y=0, line_dash="dash", line_color="#888888")
-                
-                fig_rs.update_layout(
-                    template='plotly_dark',
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    font=dict(color="#EAEAEA"),
+                fig_rs.add_hline(y=1, line_dash="dash", line_color=CHART_EMERALD,
+                                 annotation_text="Target", annotation_position="right")
+                fig_rs.add_hline(y=0, line_dash="dash", line_color=CHART_INK_SUBTLE)
+                _apply_obsidian(
+                    fig_rs, height=280, show_legend=False,
                     margin=dict(l=10, r=10, t=50, b=40),
-                    title=dict(text="Rolling Sharpe Ratio", font=dict(size=12, color='#888888'), x=0, xanchor='left'),
-                    xaxis=dict(
-                        gridcolor='rgba(255,255,255,0.05)',
-                        tickformat='%b %Y'
-                    ),
-                    yaxis=dict(gridcolor='rgba(255,255,255,0.05)'),
-                    height=280,
-                    showlegend=False
+                    title="Rolling Sharpe Ratio",
                 )
+                fig_rs.update_xaxes(tickformat='%b %Y')
                 st.plotly_chart(fig_rs, width="stretch")
-        
+
         with col_rb:
-            # Rolling Beta
             if bench_returns is not None and len(bench_returns) > rolling_window:
                 aligned = pd.concat([port_returns, bench_returns], axis=1).dropna()
                 aligned.columns = ['Port', 'Bench']
-                
+
                 if len(aligned) > rolling_window:
                     roll_betas = []
                     roll_dates = []
-                    
                     for i in range(rolling_window, len(aligned)):
                         w = aligned.iloc[i-rolling_window:i]
                         cov = np.cov(w['Port'], w['Bench'])[0, 1]
                         var = w['Bench'].var()
                         roll_betas.append(cov / var if var > 0 else 1)
                         roll_dates.append(aligned.index[i])
-                    
+
                     if len(roll_betas) > 0:
                         fig_rb = go.Figure()
                         fig_rb.add_trace(go.Scatter(
                             x=roll_dates,
                             y=roll_betas,
                             mode='lines',
-                            line=dict(color='#06b6d4', width=1.5),
-                            hovertemplate='%{x|%b %d, %Y}<br>Beta: %{y:.2f}<extra></extra>'
+                            line=dict(color=CHART_CYAN, width=1.5),
+                            hovertemplate='%{x|%b %d, %Y}<br>Beta: %{y:.2f}<extra></extra>',
                         ))
-                        fig_rb.add_hline(y=1, line_dash="dash", line_color="#888888", annotation_text="Market", annotation_position="right")
-                        
-                        fig_rb.update_layout(
-                            template='plotly_dark',
-                            plot_bgcolor='rgba(0,0,0,0)',
-                            paper_bgcolor='rgba(0,0,0,0)',
-                            font=dict(color="#EAEAEA"),
+                        fig_rb.add_hline(y=1, line_dash="dash", line_color=CHART_INK_SUBTLE,
+                                         annotation_text="Market", annotation_position="right")
+                        _apply_obsidian(
+                            fig_rb, height=280, show_legend=False,
                             margin=dict(l=10, r=10, t=50, b=40),
-                            title=dict(text="Rolling Beta vs NIFTY 50", font=dict(size=12, color='#888888'), x=0, xanchor='left'),
-                            xaxis=dict(
-                                gridcolor='rgba(255,255,255,0.05)',
-                                tickformat='%b %Y'
-                            ),
-                            yaxis=dict(gridcolor='rgba(255,255,255,0.05)'),
-                            height=280,
-                            showlegend=False
+                            title=f"Rolling Beta vs {BENCHMARK_NAME}",
                         )
+                        fig_rb.update_xaxes(tickformat='%b %Y')
                         st.plotly_chart(fig_rb, width="stretch")
-    
-    # =========================================================================
-    # MONTHLY RETURNS HEATMAP
-    # =========================================================================
-    
-    st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
-    st.markdown("#### Monthly Returns Heatmap")
+
+    # ── Monthly Returns Heatmap ─────────────────────────────────────────────
+    render_section_header("Monthly Returns Heatmap", icon="grid", accent="emerald")
     
     # Calculate monthly returns
     monthly = port_value.resample('ME').last().pct_change().dropna() * 100
@@ -2547,41 +1808,44 @@ def render_analysis_mode(
         # Column labels
         col_labels = month_names + ['YTD']
         
-        # Create heatmap
         fig_heat = go.Figure(data=go.Heatmap(
             z=heatmap_data,
             x=col_labels,
             y=year_labels,
-            colorscale=[[0, '#ef4444'], [0.5, '#1A1A1A'], [1, '#10b981']],
+            colorscale=[[0, CHART_ROSE], [0.5, "#0A0E17"], [1, CHART_EMERALD]],
             zmid=0,
             text=[[f"{v:.1f}%" if pd.notna(v) else "" for v in row] for row in heatmap_data],
             texttemplate="%{text}",
-            textfont=dict(size=10, color="#EAEAEA"),
+            textfont=dict(size=10, color=CHART_INK, family="JetBrains Mono, monospace"),
             hovertemplate="Year: %{y}<br>%{x}: %{z:.2f}%<extra></extra>",
-            showscale=False
+            showscale=False,
         ))
-        
+
         fig_heat.update_layout(
-            template='plotly_dark',
-            plot_bgcolor='rgba(0,0,0,0)',
             paper_bgcolor='rgba(0,0,0,0)',
-            font=dict(color="#EAEAEA"),
+            plot_bgcolor='rgba(0,0,0,0)',
+            font=PLOTLY_FONT,
             margin=dict(l=10, r=10, t=70, b=20),
-            title=dict(text="Month-over-Month Returns (%)", font=dict(size=12, color='#888888'), x=0, xanchor='left'),
-            xaxis=dict(side='top', tickangle=0, type='category', dtick=1),
-            yaxis=dict(autorange='reversed', type='category', dtick=1),
-            height=max(160, len(years) * 38 + 80)
+            title=dict(
+                text="Month-over-Month Returns (%)",
+                font=dict(size=12, color=CHART_INK_SUBTLE, family="JetBrains Mono, monospace"),
+                x=0, xanchor='left',
+            ),
+            xaxis=dict(side='top', tickangle=0, type='category', dtick=1,
+                       tickfont=dict(size=9, family="JetBrains Mono, monospace",
+                                     color=CHART_INK_SUBTLE)),
+            yaxis=dict(autorange='reversed', type='category', dtick=1,
+                       tickfont=dict(size=9, family="JetBrains Mono, monospace",
+                                     color=CHART_INK_SUBTLE)),
+            height=max(160, len(years) * 38 + 80),
+            hoverlabel=PLOTLY_HOVERLABEL,
         )
-        
+
         st.plotly_chart(fig_heat, width="stretch")
-    
-    # =========================================================================
-    # HOLDING ATTRIBUTION
-    # =========================================================================
-    
-    st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
-    st.markdown("#### Holding Attribution")
-    
+
+    # ── Holding Attribution ─────────────────────────────────────────────────
+    render_section_header("Holding Attribution", icon="link", accent="cyan")
+
     attribution = []
     for sym in symbols:
         if sym in portfolio_prices.columns:
@@ -2594,16 +1858,13 @@ def render_analysis_mode(
                     'Symbol': sym,
                     'Return': ret,
                     'Weight': wt,
-                    'Contribution': contrib
+                    'Contribution': contrib,
                 })
-    
+
     if attribution:
         attr_df = pd.DataFrame(attribution).sort_values('Contribution', ascending=True)
-        
         fig_attr = go.Figure()
-        
-        colors = ['#10b981' if x >= 0 else '#ef4444' for x in attr_df['Contribution']]
-        
+        colors = [CHART_EMERALD if x >= 0 else CHART_ROSE for x in attr_df['Contribution']]
         fig_attr.add_trace(go.Bar(
             y=attr_df['Symbol'],
             x=attr_df['Contribution'],
@@ -2611,33 +1872,23 @@ def render_analysis_mode(
             marker_color=colors,
             text=[f"{x:+.2f}%" for x in attr_df['Contribution']],
             textposition='outside',
-            textfont=dict(size=10),
+            textfont=dict(size=10, color=CHART_INK),
             hovertemplate="<b>%{y}</b><br>Return: %{customdata[0]:.1f}%<br>Weight: %{customdata[1]:.1f}%<br>Contribution: %{x:.2f}%<extra></extra>",
-            customdata=attr_df[['Return', 'Weight']].values
+            customdata=attr_df[['Return', 'Weight']].values,
         ))
-        
-        fig_attr.update_layout(
-            template='plotly_dark',
-            plot_bgcolor='rgba(0,0,0,0)',
-            paper_bgcolor='rgba(0,0,0,0)',
-            font=dict(color="#EAEAEA"),
+        _apply_obsidian(
+            fig_attr, height=max(320, len(attr_df) * 25 + 70), show_legend=False,
             margin=dict(l=10, r=60, t=50, b=40),
-            title=dict(text="Contribution to Portfolio Return (%)", font=dict(size=12, color='#888888'), x=0, xanchor='left'),
-            xaxis=dict(title='', gridcolor='rgba(255,255,255,0.05)'),
-            yaxis=dict(title='', gridcolor='rgba(255,255,255,0.05)'),
-            height=max(320, len(attr_df) * 25 + 70),
-            showlegend=False
+            title="Contribution to Portfolio Return (%)",
         )
-        
         st.plotly_chart(fig_attr, width="stretch")
     
     # =========================================================================
     # STATISTICS TABLE
     # =========================================================================
     
-    st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
     
-    with st.expander("📋 Detailed Statistics", expanded=False):
+    with st.expander("Detailed Statistics", expanded=False):
         col_s1, col_s2, col_s3 = st.columns(3)
         
         with col_s1:
@@ -2673,7 +1924,7 @@ def render_analysis_mode(
             - Treynor: **{m.get('treynor', 0):.3f}**
             """)
     
-    st.toast(f"Analytics loaded for {selected_tf}", icon="📊")
+    st.toast(f"Analytics loaded for {selected_tf}")
 
 
 if __name__ == "__main__":
