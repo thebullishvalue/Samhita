@@ -234,7 +234,7 @@ footer {
 }
 
 .premium-header h1::after {
-    content: "संहिता";
+    content: "स्विंग";
     position: absolute;
     right: 0;
     top: 0;
@@ -4269,7 +4269,7 @@ footer {
 
 
 /* ================================================================
-   Samhita — production polish (audit pass 2)
+   Swing — production polish (audit pass 2)
    ================================================================
    Rules below sit at the end of theme.css and intentionally override
    anything earlier. Organised by concern:
@@ -4590,7 +4590,6 @@ footer {
     background: var(--card-base);
     border: 1px solid var(--border);
     border-radius: var(--r-md);
-    padding: var(--sp-3);
     margin-top: var(--sp-2);
 }
 
