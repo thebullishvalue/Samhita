@@ -1744,9 +1744,24 @@ footer {
 .stPlotlyChart {
     border-radius: var(--r-md) !important;
     border: 1px solid var(--border);
+    overflow: hidden;
     background: var(--glass);
     margin: var(--sp-2) 0 var(--sp-4) 0;
     transition: border-color 250ms ease, box-shadow 250ms ease;
+}
+
+.stPlotlyChart > div,
+.stPlotlyChart .js-plotly-plot,
+.stPlotlyChart .plot-container,
+.stPlotlyChart .svg-container {
+    border-radius: var(--r-md);
+    overflow: hidden;
+}
+
+.stPlotlyChart::after {
+    content: '';
+    display: block;
+    height: var(--sp-2);
 }
 
 .stPlotlyChart:hover {
