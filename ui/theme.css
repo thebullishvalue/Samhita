@@ -25,8 +25,12 @@
     /* 20 */
     --sp-6: 1.5rem;
     /* 24 */
+    --sp-7: 1.75rem;
+    /* 28 */
     --sp-8: 2rem;
     /* 32 */
+    --sp-9: 2.25rem;
+    /* 36 */
     --sp-10: 2.5rem;
     /* 40 */
     --sp-12: 3rem;
@@ -234,7 +238,7 @@ footer {
 }
 
 .premium-header h1::after {
-    content: "स्विंग";
+    content: "संहिता";
     position: absolute;
     right: 0;
     top: 0;
@@ -595,13 +599,6 @@ footer {
 
 .collapsible-body-inner {
     padding: 0 var(--sp-5) var(--sp-5) var(--sp-5);
-}
-
-/* ================================================================
-   Section spacing
-   ================================================================ */
-.section-gap {
-    height: var(--sp-8);
 }
 
 /* ================================================================
@@ -1746,7 +1743,11 @@ footer {
     border: 1px solid var(--border);
     overflow: hidden;
     background: var(--glass);
-    margin: var(--sp-2) 0 var(--sp-4) 0;
+    /* Bottom margin omitted: Streamlit's stVerticalBlock gap +
+       next section-header's parent margin-top: sp-9 already provide
+       the gap. Adding margin-bottom here stacked an extra sp-4 (16px)
+       only after charts, making post-chart gaps wider than post-card. */
+    margin: var(--sp-2) 0 0 0;
     transition: border-color 250ms ease, box-shadow 250ms ease;
 }
 
@@ -1761,7 +1762,7 @@ footer {
 .stPlotlyChart::after {
     content: '';
     display: block;
-    height: var(--sp-2);
+    height: var(--sp-3);
 }
 
 .stPlotlyChart:hover {
@@ -1775,8 +1776,9 @@ footer {
 .section-divider {
     height: 1px;
     background: linear-gradient(90deg, var(--border) 0%, transparent 100%);
-    margin: var(--sp-3) 0;
     border: none;
+    /* margin is set further down (Section Vertical Rhythm) to keep
+       gap-control logic in one place. */
 }
 
 /* ================================================================
@@ -3151,19 +3153,13 @@ footer {
     .system-card h3 {
         font-size: 0.9rem;
     }
-
-    .stPlotlyChart {
-        height: auto !important;
-    }
-
-    .stPlotlyChart>div {
-        height: 300px !important;
-    }
 }
 
 @media (max-width: 480px) {
     :root {
+        --sp-7: 1.25rem;
         --sp-8: 1.5rem;
+        --sp-9: 1.75rem;
         --sp-10: 2rem;
         --sp-12: 2.5rem;
     }
@@ -4101,10 +4097,6 @@ footer {
         min-height: 180px !important;
     }
 
-    /* Charts shorter in landscape */
-    .stPlotlyChart>div {
-        height: 220px !important;
-    }
 }
 
 /* ================================================================
@@ -4283,7 +4275,7 @@ footer {
 
 
 /* ================================================================
-   Swing — production polish (audit pass 2)
+   Samhita — production polish (audit pass 2)
    ================================================================
    Rules below sit at the end of theme.css and intentionally override
    anything earlier. Organised by concern:
@@ -4383,8 +4375,11 @@ footer {
     font-size: 0.68rem;
 }
 
+/* Divider sits inside the existing section gap (provided by the
+   next section header's parent margin-top: sp-9). Zero margin keeps
+   the gap uniform whether or not a divider is present. */
 .section-divider {
-    margin: var(--sp-7) 0 var(--sp-4);
+    margin: 0;
 }
 
 /* ----------------------------------------------------------------

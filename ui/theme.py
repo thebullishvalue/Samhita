@@ -48,6 +48,22 @@ PLOTLY_MARGIN = dict(t=20, l=50, r=20, b=40)
 PLOTLY_GRID = "rgba(255,255,255,0.035)"
 PLOTLY_GRID_ZERO = "rgba(255,255,255,0.06)"
 
+# ── Chart sizing scale ──────────────────────────────────────────────
+# Three-tier height system. Pick the tier that matches the chart's role,
+# not the chart's data — keeps the page on a consistent vertical rhythm.
+CHART_HEIGHT_SM = 280   # compact 2-col (gainers/losers, rolling metrics)
+CHART_HEIGHT_MD = 360   # regular 2-col (drawdown, distribution, treemaps)
+CHART_HEIGHT_LG = 440   # full-width (scatter, waterfall, portfolio, attribution)
+
+# Margin presets — intent-named. Bottom is ≥50 everywhere to prevent
+# x-axis label cutoff. Pick by chart anatomy, not by feel.
+CHART_MARGIN = dict(l=10, r=10, t=50, b=60)           # default: title + x-axis
+CHART_MARGIN_BAR = dict(l=10, r=60, t=50, b=60)       # horizontal bars (right space for value labels)
+CHART_MARGIN_ROTATED = dict(l=10, r=10, t=50, b=110)  # rotated x-tick labels (waterfall — long 10-char symbols at 45°)
+CHART_MARGIN_NOAXIS = dict(l=10, r=10, t=50, b=30)    # treemap (no axes to label)
+CHART_MARGIN_NOTITLE = dict(l=10, r=10, t=20, b=60)   # no title (main portfolio chart)
+CHART_MARGIN_HEATMAP = dict(l=10, r=10, t=70, b=40)   # top-axis heatmap
+
 # Interactive chart config — click + zoom + pan
 PLOTLY_MODEBAR = dict(
     modeBarButtonsToRemove=["lasso2d", "select2d"],

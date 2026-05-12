@@ -68,11 +68,6 @@ def render_section_header(
     )
 
 
-def section_gap() -> None:
-    """Insert vertical spacing between major sections."""
-    st.markdown('<div class="section-gap"></div>', unsafe_allow_html=True)
-
-
 def render_metric_card(
     label: str,
     value: str,
