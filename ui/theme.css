@@ -205,12 +205,34 @@ footer {
     max-width: 98%;
 }
 
+/* ── Base vertical rhythm ────────────────────────────────────────────────
+   Pin the main content flow gap to a known scale token instead of relying on
+   Streamlit's implicit default, so every explicit section margin is
+   authoritative and the on-screen rhythm is predictable:
+     · base unit (any two stacked elements) ........ sp-4  (16px)
+     · major separation (hero/section/tabs) ........ sp-6 margin + base = 40px
+     · header → its content ........................ sp-3 margin + base = 28px
+   Value matches the prior Streamlit default, so column/card grids are
+   unchanged; it's now deterministic rather than version-dependent. */
+[data-testid="stMain"] [data-testid="stVerticalBlock"] {
+    gap: var(--sp-4);
+}
+
+/* Collapse emptied st.empty() placeholders (e.g. the progress slot once the
+   load completes) so they leave no phantom vertical gap in the page flow.
+   Only matches the empty state — a slot rendering the progress card is
+   unaffected. */
+[data-testid="stElementContainer"]:has([data-testid="stEmpty"]),
+[data-testid="element-container"]:has([data-testid="stEmpty"]) {
+    display: none !important;
+}
+
 /* ================================================================
    Masthead
    ================================================================ */
 .premium-header {
     padding: var(--sp-5) 0 var(--sp-6) 0;
-    margin-bottom: var(--sp-10);
+    margin-bottom: var(--sp-6);
     position: relative;
     animation: fadeInDown 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
@@ -3794,16 +3816,8 @@ footer {
     position: relative;
 }
 
-.stTabs [data-baseweb="tab-list"]::after {
-    content: "";
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, var(--amber-dim), transparent);
-    opacity: 0.3;
-}
+/* Decorative ::after gradient divider removed — it doubled up with the
+   tab-list border-bottom, reading as an extra divider above the section. */
 
 .stTabs [data-baseweb="tab"] {
     transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
@@ -4313,13 +4327,21 @@ footer {
 }
 
 [data-testid="stElementContainer"]:has(> div .section-hdr) {
-    margin-top: var(--sp-9);
+    margin-top: var(--sp-6);
     margin-bottom: var(--sp-3);
 }
 
-[data-baseweb="tab-panel"] [data-testid="stVerticalBlock"]>[data-testid="stElementContainer"]:first-child:has(> div .section-hdr),
+/* First section at the page top (not inside a tab) keeps the major rhythm. */
 [data-testid="stMain"] [data-testid="stVerticalBlock"]>[data-testid="stElementContainer"]:first-child:has(> div .section-hdr) {
-    margin-top: var(--sp-4);
+    margin-top: var(--sp-6);
+}
+
+/* First section inside a tab panel BINDS to the tab strip — the active-tab
+   underline already separates them, so it uses the tighter binding tier
+   (sp-3 + base = 28px) rather than a full 40px major gap. This closes the
+   empty void left where the old full-width tab track line used to sit. */
+[data-baseweb="tab-panel"] [data-testid="stVerticalBlock"]>[data-testid="stElementContainer"]:first-child:has(> div .section-hdr) {
+    margin-top: var(--sp-3);
 }
 
 [data-testid="stColumn"] [data-testid="stElementContainer"]:has(> div .section-hdr) {
@@ -4345,14 +4367,26 @@ footer {
    Portfolio Snapshot KPI row) so the tabs don't sit flush against
    metric card borders. */
 .stTabs {
-    margin-top: var(--sp-9);
+    margin-top: var(--sp-6);
 }
 
 .stTabs [data-baseweb="tab-list"] {
-    border-bottom: 1px solid var(--border);
+    /* No full-width track line: the active-tab underline is the only
+       indicator. The list border-bottom + baseweb's native tab-border sat
+       lower than the button underline, reading as a stray extra divider. */
+    border-bottom: none;
     padding-bottom: 0;
-    margin-bottom: var(--sp-7);
+    /* Spacing below the tab strip is owned solely by the next section's
+       container margin-top (single source of truth) — avoids the old
+       double-gap where this margin stacked with the section's. */
+    margin-bottom: 0;
     gap: var(--sp-6);
+}
+
+/* baseweb draws its own full-width track line element — hide it so only the
+   active-tab underline remains. */
+.stTabs [data-baseweb="tab-border"] {
+    display: none !important;
 }
 
 .stTabs [data-baseweb="tab"] {
