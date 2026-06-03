@@ -4,3 +4,7 @@ plotly
 numpy
 yfinance
 openpyxl
+# Secondary data sources (fallback when yfinance is non-responsive)
+NseKit
+jugaad-data>=0.33.1
+bse

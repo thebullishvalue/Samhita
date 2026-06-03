@@ -1,8 +1,8 @@
 # SAMHITA (संहिता) - Portfolio Tracker
 
-**A @thebullishvalue Product | v1.1.1**
+**A @thebullishvalue Product | v1.2.0**
 
-Real-time portfolio analytics with institutional-grade performance tracking, benchmark comparison, and advanced risk analytics.
+Real-time portfolio analytics with institutional-grade performance tracking, benchmark comparison, and advanced risk analytics — backed by a resilient multi-source data layer (Yahoo Finance primary, with automatic NSE/BSE fallback).
 
 ---
 
@@ -30,7 +30,7 @@ SAMHITA (संहिता) is a professional-grade portfolio tracking applicat
 - **Dashboard Mode**: Quick portfolio overview with performance metrics, top movers, concentration analytics, and interactive visualizations
 - **Analysis Mode**: Bloomberg Terminal-style analytics with benchmark comparison (NIFTY 50), risk-adjusted metrics, rolling analytics, and attribution analysis
 
-The application fetches real-time prices from Yahoo Finance, processes portfolio data from an Excel file, and renders institutional-grade analytics with a premium dark-theme UI featuring a gold accent design system.
+The application fetches real-time prices from Yahoo Finance (primary), automatically falling back to secondary NSE/BSE sources when Yahoo is unresponsive or returns gaps, processes portfolio data from an Excel file, and renders institutional-grade analytics with a premium dark-theme UI featuring a gold accent design system. Data-pipeline diagnostics stream to a curated terminal log.
 
 ---
 
@@ -38,7 +38,7 @@ The application fetches real-time prices from Yahoo Finance, processes portfolio
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                        SAMHITA Application                      │
+│                        SAMHITA Application                    │
 ├─────────────────────────────────────────────────────────────┤
 │                                                               │
 │  ┌──────────────────┐         ┌──────────────────────────┐   │
@@ -46,7 +46,9 @@ The application fetches real-time prices from Yahoo Finance, processes portfolio
 │  │                  │         │                          │   │
 │  │  • Excel File    │         │  • Dashboard Mode        │   │
 │  │  • Yahoo Finance │         │  • Analysis Mode         │   │
-│  │                  │         │                          │   │
+│  │    (primary)     │         │                          │   │
+│  │  • NSE/BSE       │         │                          │   │
+│  │    fallback      │         │                          │   │
 │  └────────┬─────────┘         └──────────┬───────────────┘   │
 │           │                               │                   │
 │           ▼                               │                   │
@@ -80,7 +82,7 @@ The application fetches real-time prices from Yahoo Finance, processes portfolio
 
 | Module | Description |
 |---|---|
-| **Data Fetching Layer** | Real-time price retrieval via yfinance with 5-minute caching, handles NSE suffix mapping and holiday alignment |
+| **Data Fetching Layer** | Real-time price retrieval via yfinance (primary) with 5-minute caching, NSE/BSE suffix mapping and holiday alignment. Resilient fallback fills any unpriced symbols from secondary sources — NSE live (NseKit) + EOD bhavcopy (jugaad-data); BSE live + EOD bhavcopy (`bse`) — live-first with an EOD backstop. All diagnostics stream to a curated terminal log |
 | **Metrics Calculation Engine** | Portfolio-level P&L, weights, returns, risk-adjusted ratios (Sharpe, Sortino, Calmar, etc.), benchmark-relative metrics (Alpha, Beta, R²) |
 | **Visualization Layer** | Interactive Plotly charts (treemaps, heatmaps, scatter plots, waterfall charts), formatted HTML tables, downloadable Excel exports |
 | **UI Orchestration** | Streamlit-based sidebar controls, tab navigation, metric cards, timeframe selectors, anchor date configuration |
@@ -88,7 +90,7 @@ The application fetches real-time prices from Yahoo Finance, processes portfolio
 ### Data Flow
 
 1. **Input**: Portfolio data loaded from `Summary Report.xlsx` (asset names, symbols, quantities, average prices)
-2. **Price Enrichment**: Real-time current prices and previous close fetched from Yahoo Finance
+2. **Price Enrichment**: Real-time current prices and previous close fetched from Yahoo Finance (primary); any symbols Yahoo cannot price are resolved from secondary NSE/BSE sources (live-first, EOD bhavcopy backstop), with anything still unresolved falling back to the holding's average price
 3. **Metrics Calculation**: Per-holding and portfolio-level metrics computed (values, gains, weights, returns)
 4. **Mode Selection**: User chooses Dashboard or Analysis Mode via sidebar
 5. **Visualization**: Interactive charts and tables rendered with premium dark-theme styling
@@ -203,11 +205,11 @@ Place your portfolio data in `Summary Report.xlsx` with the following columns:
 | Column | Description | Example |
 |---|---|---|
 | **ASSET NAME** | Full name of the Asset | "NIFTY 50 ETF" |
-| **SYMBOL** | NSE ticker symbol (without .NS suffix) | "NIFTYBEES" |
+| **SYMBOL** | Ticker symbol. No suffix → NSE (`.NS` applied automatically); `.BO` suffix → BSE | "NIFTYBEES", "NSDL.BO" |
 | **QUANTITY** | Number of units held | 150 |
 | **AVERAGE PRICE** | Average purchase price per unit | 185.50 |
 
-**Note**: The `CURRENT PRICE` column is automatically fetched from Yahoo Finance (NSE exchange) at runtime.
+**Note**: The `CURRENT PRICE` column is fetched automatically at runtime — Yahoo Finance first, then NSE/BSE secondary sources for any gaps. The symbol convention is unchanged: bare symbols resolve on NSE, `.BO` symbols on BSE.
 
 ---
 
@@ -219,7 +221,7 @@ The application uses the following configuration constants (defined at the top o
 
 | Constant | Value | Description |
 |---|---|---|
-| `VERSION` | `v1.1.1` | Application version |
+| `VERSION` | `v1.2.0` | Application version |
 | `BENCHMARK_TICKER` | `^NSEI` | NIFTY 50 index ticker for benchmark comparison |
 | `RISK_FREE_RATE` | `6.5%` | Annualized risk-free rate used in Sharpe/Sortino calculations |
 | `CACHE_TTL` | `300s` | Cache duration for price fetching functions |
@@ -240,7 +242,10 @@ The application uses the following configuration constants (defined at the top o
 | **pandas** | DataFrame operations, time series manipulation, resampling |
 | **numpy** | Numerical operations (percentiles, covariance, standard deviation) |
 | **plotly** | Interactive charting (bar, scatter, treemap, heatmap, line, histogram) |
-| **yfinance** | Market data fetching (real-time prices, historical daily data from NSE) |
+| **yfinance** | Primary market data fetching (real-time prices, historical daily data, NSE + BSE) |
+| **NseKit** | Secondary source — live NSE equity quotes (fallback) |
+| **jugaad-data** (≥0.33.1) | Secondary source — NSE EOD bhavcopy (fallback backstop) |
+| **bse** | Secondary source — live BSE quotes and BSE EOD bhavcopy (fallback) |
 | **openpyxl** | Excel file reading (input) and writing (export) |
 
 All dependencies are listed in `requirements.txt`. Install with `pip install -r requirements.txt`.
@@ -267,6 +272,13 @@ All dependencies are listed in `requirements.txt`. Install with `pip install -r 
 ---
 
 ## Version History
+
+### v1.2.0 (2026-06-04)
+- Resilient multi-source data layer: Yahoo Finance primary, with automatic NSE/BSE fallback (NseKit + jugaad-data for NSE, `bse` for BSE) — live-first with an EOD bhavcopy backstop; portfolio symbol convention unchanged
+- Curated, colored terminal log for the data pipeline (primary attempt, per-source resolution, summary)
+- Themed progress card for data loads in Dashboard and Analysis modes; native cache spinners removed
+- Unified vertical-rhythm system (base 16 / binding 28 / major 40px) and assorted layout polish (removed Portfolio Snapshot header, eliminated stray tab divider and phantom gaps)
+- Suppressed noisy upstream warnings (yfinance `auto_adjust`, pandas `pct_change`)
 
 ### v1.1.1 (2026-04-05)
 - Code quality improvements with comprehensive type hints

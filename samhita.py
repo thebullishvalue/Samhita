@@ -1,3 +1,4 @@
+
 # -*- coding: utf-8 -*-
 """
 SAMHITA (संहिता) - Portfolio Tracker | A @thebullishvalue Product
@@ -10,6 +11,9 @@ UI — "Obsidian Quant" Institutional Research Terminal design language.
 
 from __future__ import annotations
 
+import sys
+import time
+import uuid
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from typing import Any
@@ -36,6 +40,7 @@ from ui.theme import (
     PLOTLY_HOVERLABEL,
     chart_layout,
     inject_css,
+    progress_bar,
     style_axes,
 )
 from ui.components import (
@@ -45,7 +50,7 @@ from ui.components import (
 )
 
 # --- Constants ---
-VERSION = "v1.1.1"
+VERSION = "v1.2.0"
 PRODUCT_NAME = "Samhita"
 COMPANY = "@thebullishvalue"
 
@@ -71,8 +76,363 @@ st.set_page_config(
 inject_css()
 
 
+# ===========================================================================
+# TERMINAL LOG — curated, colored console output for the data pipeline.
+#
+# Writes directly to stdout (visible in the terminal running `streamlit run`).
+# All UI-facing fetch chatter (native warnings/spinners) is routed here so the
+# Streamlit surface stays cohesive with the app's UI/UX fidelity.
+# ===========================================================================
+
+try:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
+# Silence yfinance's own console chatter (HTTP errors, "Failed download",
+# FutureWarnings) so SAMHITA's curated terminal log stays clean. Genuine
+# failures are still captured and reported via the _Console below.
+import logging as _logging
+import warnings as _warnings
+
+_logging.getLogger("yfinance").setLevel(_logging.CRITICAL)
+_warnings.filterwarnings("ignore", category=FutureWarning, module="yfinance")
+# yfinance raises some FutureWarnings at the caller's line, so also match by
+# message (module-agnostic) — e.g. the auto_adjust default-change notice.
+_warnings.filterwarnings("ignore", message=r".*auto_adjust.*")
+
+_SESSION_RUN_ID = f"{datetime.now():%Y%m%d_%H%M%S}_{str(uuid.uuid4())[:8]}"
+
+
+class _Console:
+    """Minimal styled console logger (Nishkarsh-style) for SAMHITA's pipeline."""
+
+    _USE_COLOR = bool(getattr(sys.stdout, "isatty", lambda: False)())
+
+    RESET = "\033[0m"
+    BOLD = "\033[1m"
+    DIM = "\033[2m"
+    RED = "\033[91m"
+    GREEN = "\033[92m"
+    YELLOW = "\033[93m"
+    BLUE = "\033[94m"
+    CYAN = "\033[96m"
+    GRAY = "\033[90m"
+
+    def _c(self, code: str, text: str) -> str:
+        return f"{code}{text}{self.RESET}" if self._USE_COLOR else text
+
+    def _write(self, message: str = "") -> None:
+        try:
+            sys.stdout.write(message + "\n")
+            sys.stdout.flush()
+        except Exception:
+            pass
+
+    def _ts(self) -> str:
+        return datetime.now().strftime("%H:%M:%S")
+
+    def line(self, char: str = "─", length: int = 70) -> None:
+        self._write(self._c(self.GRAY, char * length))
+
+    def section(self, title: str) -> None:
+        """Open a titled data-pipeline section with the run id + timestamp."""
+        self._write()
+        self.line("═", 70)
+        self._write("  " + self._c(self.BOLD + self.CYAN, title))
+        self._write(
+            "  " + self._c(self.GRAY, f"Run {_SESSION_RUN_ID} · {self._ts()}")
+        )
+        self.line("═", 70)
+
+    def step(self, title: str) -> None:
+        self._write("  " + self._c(self.BOLD + self.BLUE, f"▸ {title}"))
+
+    def detail(self, message: str) -> None:
+        self._write("    " + self._c(self.CYAN, "→") + f" {message}")
+
+    def item(self, label: str, value: Any, indent: int = 6) -> None:
+        self._write(f"{' ' * indent}{self._c(self.GRAY, label + ':')} {value}")
+
+    def success(self, message: str) -> None:
+        self._write("    " + self._c(self.GREEN, "✓") + f" {message}")
+
+    def warning(self, message: str) -> None:
+        self._write("    " + self._c(self.YELLOW, "⚠") + f" {message}")
+
+    def error(self, message: str) -> None:
+        self._write("    " + self._c(self.RED, "✗") + f" {message}")
+
+    def summary(self, title: str, data: dict[str, Any]) -> None:
+        self._write()
+        self._write("  " + self._c(self.GRAY, f"┌─ {title}"))
+        for key, value in data.items():
+            self._write("  " + self._c(self.GRAY, f"│   {key}:") + f" {value}")
+        self._write("  " + self._c(self.GRAY, "└─"))
+
+
+log = _Console()
+
+
+def _fmt_symlist(symbols: list[str], cap: int = 12) -> str:
+    """Compact, capped symbol list for terminal output."""
+    if not symbols:
+        return "none"
+    shown = ", ".join(symbols[:cap])
+    extra = len(symbols) - cap
+    return f"{shown} (+{extra} more)" if extra > 0 else shown
+
+
+# Sentinel set by fetch_current_prices' body, which executes only on a cache
+# MISS. calculate_metrics uses it to log the PRICE RESOLUTION summary exactly
+# once per real fetch — not on cache-hit reruns (Streamlit double-runs the
+# script on load), which would otherwise duplicate the summary block.
+_FETCH_RAN: dict[str, bool] = {"primary": False}
+
+
+# Map a portfolio symbol to a yfinance ticker.
+# Symbols WITHOUT a '.' get the .NS (NSE) suffix as a fallback (e.g. RELIANCE -> RELIANCE.NS).
+# Symbols that ALREADY contain a '.' are exchange-qualified and used exactly as-is
+# (e.g. NSDL.BO -> NSDL.BO, QUEST.BO -> QUEST.BO).
+def _to_yf_ticker(symbol: str) -> str:
+    return symbol if '.' in symbol else f"{symbol}.NS"
+
+
+# ---------------------------------------------------------------------------
+# Secondary data infrastructure (fallback when yfinance is non-responsive).
+#
+# yfinance stays the PRIMARY source and the portfolio SYMBOL convention is
+# unchanged (no dot -> NSE; ".BO" -> BSE; ".NS" -> NSE). These helpers adapt
+# that convention to each secondary source's naming, then fill ONLY the
+# symbols yfinance left as NaN.
+#
+# Per exchange: live first, EOD bhavcopy as a post-close backstop.
+#   NSE  live -> NseKit.cm_live_equity_full_info ; EOD -> jugaad bhavcopy
+#   BSE  live -> bse.quote (scrip code by name)   ; EOD -> bse bhavcopy
+# Every source is optional and lazily imported: a missing/failing source is
+# silently skipped, so the app always degrades gracefully back to yfinance.
+# ---------------------------------------------------------------------------
+
+def _classify(symbol: str) -> tuple[str, str] | None:
+    """Map a raw portfolio symbol to (exchange, bare_symbol) for the fallbacks.
+
+    Mirrors _to_yf_ticker: no dot or ".NS" -> NSE; ".BO" -> BSE.
+    Returns None for symbols/exchanges we have no fallback for.
+    """
+    if not symbol or not isinstance(symbol, str):
+        return None
+    s = symbol.strip().upper()
+    if '.' not in s:
+        return ('NSE', s)
+    if s.endswith('.NS'):
+        return ('NSE', s[:-3])
+    if s.endswith('.BO'):
+        return ('BSE', s[:-3])
+    return None
+
+
+def _num(value: Any) -> float:
+    """Best-effort float parse; returns NaN for blanks/None/garbage."""
+    try:
+        if value is None:
+            return np.nan
+        if isinstance(value, str):
+            value = value.replace(',', '').strip()
+            if value in ('', '-'):
+                return np.nan
+        return float(value)
+    except (ValueError, TypeError):
+        return np.nan
+
+
+def _fallback_nse_live(bare_symbols: list[str]) -> dict[str, tuple[float, float]]:
+    """NseKit live quotes, per symbol. {bare: (last, prev_close)}."""
+    out: dict[str, tuple[float, float]] = {}
+    try:
+        from NseKit import Nse
+        nse = Nse()
+    except Exception as e:
+        log.warning(f"NseKit unavailable ({type(e).__name__}); skipping NSE live")
+        return out
+    for bare in bare_symbols:
+        try:
+            d = nse.cm_live_equity_full_info(bare)
+            if d:
+                out[bare] = (_num(d.get('LastTradedPrice')), _num(d.get('PreviousClose')))
+                log.detail(f"NseKit · {bare} → {out[bare][0]}")
+        except Exception:
+            continue
+    return out
+
+
+def _fallback_bse_live(bare_symbols: list[str]) -> dict[str, tuple[float, float]]:
+    """bse.quote live quotes, per symbol (scrip code resolved by name)."""
+    out: dict[str, tuple[float, float]] = {}
+    try:
+        import tempfile
+        from bse import BSE
+        b = BSE(download_folder=tempfile.gettempdir())
+    except Exception as e:
+        log.warning(f"bse unavailable ({type(e).__name__}); skipping BSE live")
+        return out
+    try:
+        for bare in bare_symbols:
+            try:
+                code = b.getScripCode(bare)
+                if not code:
+                    continue
+                q = b.quote(code)
+                if q:
+                    out[bare] = (_num(q.get('LTP')), _num(q.get('PrevClose')))
+                    log.detail(f"bse · {bare} (#{code}) → {out[bare][0]}")
+            except Exception:
+                continue
+    finally:
+        try:
+            b.exit()
+        except Exception:
+            pass
+    return out
+
+
+def _bhav_lookup(df: pd.DataFrame, eq_only: bool) -> dict[str, tuple[float, float]]:
+    """Build {TckrSymb: (close, prev_close)} from a UDiFF bhavcopy DataFrame."""
+    lookup: dict[str, tuple[float, float]] = {}
+    if df is None or 'TckrSymb' not in df.columns:
+        return lookup
+    rows = df
+    if eq_only and 'SctySrs' in df.columns:
+        rows = df[df['SctySrs'].astype(str).str.strip() == 'EQ']
+    for _, r in rows.iterrows():
+        sym = str(r['TckrSymb']).strip()
+        if sym and sym not in lookup:
+            lookup[sym] = (_num(r.get('ClsPric')), _num(r.get('PrvsClsgPric')))
+    return lookup
+
+
+def _fallback_nse_bhav(bare_symbols: list[str]) -> dict[str, tuple[float, float]]:
+    """Most-recent NSE EOD bhavcopy (jugaad), matched on TckrSymb."""
+    try:
+        import tempfile
+        from jugaad_data.nse import bhavcopy_save
+    except Exception:
+        return {}
+    folder, today = tempfile.gettempdir(), datetime.now().date()
+    for back in range(0, 7):
+        try:
+            d = today - timedelta(days=back)
+            path = bhavcopy_save(d, folder)
+            df = pd.read_csv(path)
+            df.columns = [c.strip() for c in df.columns]
+            lookup = _bhav_lookup(df, eq_only=True)
+            log.detail(f"NSE bhavcopy {d:%d-%b-%Y} loaded ({len(lookup)} scrips)")
+            return {b: lookup[b] for b in bare_symbols if b in lookup}
+        except Exception:
+            continue
+    log.warning("NSE bhavcopy unavailable (last 7 days)")
+    return {}
+
+
+def _fallback_bse_bhav(bare_symbols: list[str]) -> dict[str, tuple[float, float]]:
+    """Most-recent BSE EOD bhavcopy (bse), matched on TckrSymb."""
+    try:
+        import tempfile
+        from bse import BSE
+        b = BSE(download_folder=tempfile.gettempdir())
+    except Exception:
+        return {}
+    try:
+        today = datetime.now().date()
+        for back in range(0, 7):
+            try:
+                d = today - timedelta(days=back)
+                path = b.bhavcopyReport(d)
+                df = pd.read_csv(path)
+                df.columns = [c.strip() for c in df.columns]
+                lookup = _bhav_lookup(df, eq_only=False)
+                log.detail(f"BSE bhavcopy {d:%d-%b-%Y} loaded ({len(lookup)} scrips)")
+                return {s: lookup[s] for s in bare_symbols if s in lookup}
+            except Exception:
+                continue
+        log.warning("BSE bhavcopy unavailable (last 7 days)")
+    finally:
+        try:
+            b.exit()
+        except Exception:
+            pass
+    return {}
+
+
+def _merge_live_bhav(
+    bare_to_orig: dict[str, str],
+    live: dict[str, tuple[float, float]],
+    bhav: dict[str, tuple[float, float]],
+    resolved: dict[str, tuple[float, float]],
+) -> None:
+    """Prefer live (must carry a last price); fall back to bhavcopy."""
+    for bare, orig in bare_to_orig.items():
+        lq, bq = live.get(bare), bhav.get(bare)
+        if lq and not pd.isna(lq[0]):
+            resolved[orig] = lq
+        elif bq and not pd.isna(bq[0]):
+            resolved[orig] = bq
+        elif lq:
+            resolved[orig] = lq
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _fetch_fallback_quotes(symbols: tuple[str, ...]) -> dict[str, tuple[float, float]]:
+    """Resolve {original_symbol: (last, prev_close)} from secondary sources.
+
+    Live-first per exchange, EOD bhavcopy as a backstop. Only called for the
+    symbols yfinance could not price.
+    """
+    if not symbols:
+        return {}
+    nse: dict[str, str] = {}
+    bse: dict[str, str] = {}
+    other: list[str] = []
+    for s in symbols:
+        c = _classify(s)
+        if not c:
+            other.append(s)
+            continue
+        exch, bare = c
+        (nse if exch == 'NSE' else bse)[bare] = s
+
+    t0 = time.perf_counter()
+    log.step(f"SECONDARY · {len(symbols)} unpriced → NSE:{len(nse)} BSE:{len(bse)}"
+             + (f" · {len(other)} unsupported" if other else ""))
+
+    resolved: dict[str, tuple[float, float]] = {}
+
+    if nse:
+        log.detail(f"NSE live (NseKit) · {len(nse)} symbol(s)")
+        live = _fallback_nse_live(list(nse))
+        still = [b for b in nse if b not in live or pd.isna(live[b][0])]
+        if still:
+            log.detail(f"NSE backstop (bhavcopy) · {len(still)} unresolved live")
+        bhav = _fallback_nse_bhav(still) if still else {}
+        _merge_live_bhav(nse, live, bhav, resolved)
+
+    if bse:
+        log.detail(f"BSE live (bse.quote) · {len(bse)} symbol(s)")
+        live = _fallback_bse_live(list(bse))
+        still = [b for b in bse if b not in live or pd.isna(live[b][0])]
+        if still:
+            log.detail(f"BSE backstop (bhavcopy) · {len(still)} unresolved live")
+        bhav = _fallback_bse_bhav(still) if still else {}
+        _merge_live_bhav(bse, live, bhav, resolved)
+
+    dt = time.perf_counter() - t0
+    got = sum(1 for v in resolved.values() if not pd.isna(v[0]))
+    log.success(f"Secondary resolved {got}/{len(symbols)} in {dt:.1f}s")
+    return resolved
+
+
 # Function to fetch current prices from yfinance
-@st.cache_data(ttl=300, show_spinner="Fetching real-time prices...")  # 5 min cache
+@st.cache_data(ttl=300, show_spinner=False)  # 5 min cache
 def fetch_current_prices(symbols: list[str]) -> dict[str, float | Any]:
     """
     Fetches the latest closing price for a list of symbols with the .NS suffix.
@@ -82,15 +442,29 @@ def fetch_current_prices(symbols: list[str]) -> dict[str, float | Any]:
     - Daily data (no intraday interval) to avoid rate limits
     - Single bulk download for all tickers
     - 5-day period to handle weekends/holidays
+
+    Diagnostics are routed to the terminal log (see _Console); no Streamlit
+    banners/spinners are emitted here so the UI stays cohesive.
     """
     if not symbols:
         return {}
 
-    # Add .NS suffix to symbols
-    tickers_with_suffix = [f"{s}.NS" for s in symbols if s and isinstance(s, str)]
-    
-    prices = {}
-    
+    # Body runs only on a cache miss → mark that a real fetch occurred so the
+    # caller logs the resolution summary once (not on cache-hit reruns).
+    _FETCH_RAN["primary"] = True
+
+    # Build ticker list (.NS fallback) and a ticker -> original symbol map
+    ticker_map = {
+        _to_yf_ticker(s): s for s in symbols if s and isinstance(s, str)
+    }
+    tickers_with_suffix = list(ticker_map.keys())
+
+    log.section("SAMHITA · CURRENT PRICES")
+    log.step(f"PRIMARY · yfinance · {len(tickers_with_suffix)} symbol(s) (period=5d)")
+    t0 = time.perf_counter()
+
+    prices = {s: np.nan for s in symbols}
+
     try:
         # Fetch daily data for last 5 days (handles weekends/holidays)
         # NO interval parameter = daily data = less rate limiting
@@ -100,55 +474,51 @@ def fetch_current_prices(symbols: list[str]) -> dict[str, float | Any]:
             progress=False,
             auto_adjust=False
         )
-        
+
         if data.empty:
-            st.warning("yfinance returned empty data.")
-            return {s: np.nan for s in symbols}
-        
-        # Get Close prices
-        try:
-            close_prices = data['Close']
-        except KeyError:
-            st.warning("No 'Close' column in fetched data.")
-            return {s: np.nan for s in symbols}
-        
-        if close_prices.empty:
-            return {s: np.nan for s in symbols}
-        
-        # Single ticker case: close_prices is a Series
-        if len(tickers_with_suffix) == 1:
-            ticker = tickers_with_suffix[0]
-            original = ticker.replace('.NS', '')
-            last_price = close_prices.dropna().iloc[-1] if not close_prices.dropna().empty else np.nan
-            prices[original] = float(last_price) if not pd.isna(last_price) else np.nan
-        
-        # Multiple tickers case: close_prices is a DataFrame
+            log.error("yfinance returned empty data")
         else:
-            # Get last row (most recent date)
-            latest_prices = close_prices.iloc[-1]
-            
-            for ticker in tickers_with_suffix:
-                original = ticker.replace('.NS', '')
-                try:
-                    price = latest_prices[ticker]
-                    prices[original] = float(price) if not pd.isna(price) else np.nan
-                except (KeyError, TypeError):
-                    prices[original] = np.nan
-                    
+            close_prices = data['Close'] if 'Close' in data.columns.get_level_values(0) else None
+            if close_prices is None:
+                log.error("yfinance response had no 'Close' column")
+            elif close_prices.empty:
+                log.error("yfinance 'Close' frame was empty")
+            elif len(tickers_with_suffix) == 1:
+                # Single ticker case: close_prices is a Series
+                ticker = tickers_with_suffix[0]
+                original = ticker_map[ticker]
+                series = close_prices.dropna()
+                if not series.empty:
+                    prices[original] = float(series.iloc[-1])
+            else:
+                # Multiple tickers case: close_prices is a DataFrame
+                latest_prices = close_prices.iloc[-1]
+                for ticker in tickers_with_suffix:
+                    original = ticker_map[ticker]
+                    try:
+                        price = latest_prices[ticker]
+                        prices[original] = float(price) if not pd.isna(price) else np.nan
+                    except (KeyError, TypeError):
+                        prices[original] = np.nan
+
     except Exception as e:
-        st.error(f"Error fetching data from yfinance: {e}")
-        return {s: np.nan for s in symbols}
-    
-    # Report any failures
-    failed = [s for s in symbols if s in prices and pd.isna(prices.get(s))]
+        log.error(f"yfinance request failed: {type(e).__name__}: {e}")
+
+    dt = time.perf_counter() - t0
+    failed = [s for s in symbols if pd.isna(prices.get(s))]
+    priced = len(symbols) - len(failed)
     if failed:
-        st.warning(f"⚠️ Could not fetch prices for: {', '.join(failed[:5])}{'...' if len(failed) > 5 else ''}")
-    
+        log.warning(f"Primary priced {priced}/{len(symbols)} in {dt:.1f}s")
+        log.item("Unpriced", _fmt_symlist(failed))
+        log.detail("Handing off to secondary sources…")
+    else:
+        log.success(f"Primary priced {priced}/{len(symbols)} in {dt:.1f}s")
+
     return prices
     
 
 # Function to load data
-@st.cache_data
+@st.cache_data(show_spinner=False)
 def load_data() -> pd.DataFrame | None:
     """Load portfolio data from Excel file."""
     file_path = "Summary Report.xlsx"
@@ -162,15 +532,16 @@ def load_data() -> pd.DataFrame | None:
         return None
 
 # Function to fetch previous day close prices for Today Return calculation
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=300, show_spinner=False)
 def fetch_previous_close(symbols: list[str]) -> dict[str, float | Any]:
     """Fetch previous trading day close prices for calculating today return."""
     if not symbols:
         return {}
     
     prices = {}
-    tickers_with_suffix = [f"{s}.NS" for s in symbols]
-    
+    ticker_map = {_to_yf_ticker(s): s for s in symbols}
+    tickers_with_suffix = list(ticker_map.keys())
+
     try:
         # Fetch 5 days of data to ensure we get previous close
         data = yf.download(
@@ -178,9 +549,10 @@ def fetch_previous_close(symbols: list[str]) -> dict[str, float | Any]:
             period='5d',
             interval='1d',
             progress=False,
-            threads=True
+            threads=True,
+            auto_adjust=False
         )
-        
+
         if data.empty:
             return {s: np.nan for s in symbols}
         
@@ -189,7 +561,7 @@ def fetch_previous_close(symbols: list[str]) -> dict[str, float | Any]:
         # Single ticker case
         if len(tickers_with_suffix) == 1:
             ticker = tickers_with_suffix[0]
-            original = ticker.replace('.NS', '')
+            original = ticker_map[ticker]
             if len(close_prices.dropna()) >= 2:
                 prev_close = close_prices.dropna().iloc[-2]  # Second to last
                 prices[original] = float(prev_close)
@@ -200,7 +572,7 @@ def fetch_previous_close(symbols: list[str]) -> dict[str, float | Any]:
             if len(close_prices) >= 2:
                 prev_prices = close_prices.iloc[-2]
                 for ticker in tickers_with_suffix:
-                    original = ticker.replace('.NS', '')
+                    original = ticker_map[ticker]
                     try:
                         price = prev_prices[ticker]
                         prices[original] = float(price) if not pd.isna(price) else np.nan
@@ -217,26 +589,68 @@ def fetch_previous_close(symbols: list[str]) -> dict[str, float | Any]:
 # Function to calculate metrics
 def calculate_metrics(
     df: pd.DataFrame,
+    progress: Any = None,
 ) -> tuple[pd.DataFrame, dict[str, float]]:
-    """Calculate portfolio performance metrics."""
+    """Calculate portfolio performance metrics.
+
+    ``progress`` is an optional callable ``(pct, label, sub="")`` used to drive
+    the themed UI progress card; it is a no-op when None.
+    """
+    def _p(pct: int, label: str, sub: str = "") -> None:
+        if progress:
+            progress(pct, label, sub)
+
     df = df.copy()
     symbols = df['SYMBOL'].tolist()
+
+    _FETCH_RAN["primary"] = False  # set True only if the fetch actually runs
+    _p(20, "Fetching live prices", f"yfinance · {len(symbols)} holdings")
     price_map = fetch_current_prices(symbols)
-    
+
     # 2. Fetch previous close for today's return
+    _p(45, "Reconciling previous close", "Today's change basis")
     prev_close_map = fetch_previous_close(symbols)
-    
+
+    # 2b. Secondary sources (live-first, EOD bhavcopy backstop) fill ONLY the
+    # symbols yfinance could not price. yfinance remains the primary source.
+    missing = [s for s in symbols if pd.isna(price_map.get(s, np.nan))]
+    primary_count = len(symbols) - len(missing)
+    secondary_count = 0
+    if missing:
+        _p(65, "Querying secondary sources",
+           f"{len(missing)} unpriced · NseKit / BSE / bhavcopy")
+        fb = _fetch_fallback_quotes(tuple(sorted(missing)))
+        for s, (last, prev) in fb.items():
+            if not pd.isna(last):
+                price_map[s] = last
+                secondary_count += 1
+            if pd.isna(prev_close_map.get(s, np.nan)) and not pd.isna(prev):
+                prev_close_map[s] = prev
+
+    _p(90, "Computing analytics", f"{len(symbols)} holdings")
+
     # 3. Update CURRENT PRICE column using fetched data
     df['FETCHED PRICE'] = df['SYMBOL'].map(price_map)
     df['CURRENT PRICE'] = df['FETCHED PRICE'].fillna(df.get('CURRENT PRICE', df['AVERAGE PRICE']))
     
     # 4. Add previous close for today's return calculation
     df['PREV CLOSE'] = df['SYMBOL'].map(prev_close_map)
-    
-    # Check for critical missing data after fetch
-    if df['CURRENT PRICE'].isnull().any():
-        st.warning("⚠️ Some current prices could not be fetched. Using Average Price for calculation.")
-    
+
+    # Final resolution summary -> terminal log only (no Streamlit banner).
+    # Logged once per real fetch; skipped on cache-hit reruns so the box is
+    # never duplicated.
+    if _FETCH_RAN["primary"]:
+        unresolved = df.loc[df['FETCHED PRICE'].isnull(), 'SYMBOL'].tolist()
+        log.summary("PRICE RESOLUTION", {
+            "Holdings": len(symbols),
+            "Primary (yfinance)": primary_count,
+            "Secondary (fallback)": secondary_count,
+            "Avg-price fallback": f"{len(unresolved)}" + (
+                f" ({_fmt_symlist(unresolved)})" if unresolved else ""
+            ),
+        })
+        log.line("═", 70)
+
     # 5. Perform calculations using the updated 'CURRENT PRICE'
     df['INVESTED'] = df['QUANTITY'] * df['AVERAGE PRICE']
     df['CURR. VALUE'] = df['QUANTITY'] * df['CURRENT PRICE']
@@ -373,6 +787,10 @@ def main() -> None:
         st.markdown('<div class="sidebar-title">Data Controls</div>', unsafe_allow_html=True)
         if st.button("Refresh Prices", help="Clear cached prices and fetch fresh data"):
             st.cache_data.clear()
+            # Re-arm the progress cards: the next run is a real (slow) cache
+            # miss, so show loading feedback for both dashboard and analysis.
+            st.session_state.pop('_samhita_dash_loaded', None)
+            st.session_state.pop('_samhita_an_key', None)
             st.toast("Price cache cleared")
             st.rerun()
 
@@ -444,13 +862,21 @@ def main() -> None:
         )
         return
 
-    df, metrics = calculate_metrics(df)
+    # Themed progress card — shown on first dashboard load of the session
+    # (prices are cached afterwards, so cosmetic reruns stay instant/quiet).
+    _show_prog = not st.session_state.get('_samhita_dash_loaded', False)
+    _prog_slot = st.empty() if _show_prog else None
 
-    render_section_header(
-        "Portfolio Snapshot",
-        "Overview of your investment performance · prices are near real-time",
-        icon="briefcase",
-    )
+    def _dash_progress(pct: int, label: str, sub: str = "") -> None:
+        if _prog_slot is not None:
+            progress_bar(_prog_slot, pct, label, sub)
+
+    df, metrics = calculate_metrics(df, progress=_dash_progress)
+
+    if _prog_slot is not None:
+        progress_bar(_prog_slot, 100, "Portfolio Ready", f"{len(df)} holdings · prices live")
+        _prog_slot.empty()
+        st.session_state['_samhita_dash_loaded'] = True
 
     col1, col2, col3, col4 = st.columns(4)
 
@@ -1090,17 +1516,24 @@ TIMEFRAMES = {
     'MAX': 3650
 }
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=300, show_spinner=False)
 def fetch_analysis_data(
     symbols: list[str], days_back: int
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Fetch historical data for portfolio and NIFTY 50 benchmark.
     Portfolio data is aligned to NIFTY 50 trading dates to avoid
     holiday/timezone edge cases.
+
+    Diagnostics go to the terminal log; no Streamlit spinner/banners here.
     """
     end_date = datetime.now()
     start_date = end_date - timedelta(days=days_back)
-    
+
+    log.section("SAMHITA · ANALYSIS HISTORY")
+    log.step(f"PRIMARY · yfinance · {len(symbols)} holding(s) + benchmark "
+             f"({start_date:%d-%b-%Y} → {end_date:%d-%b-%Y})")
+    t0 = time.perf_counter()
+
     try:
         # First fetch NIFTY 50 to get valid trading dates
         benchmark_data = yf.download(
@@ -1108,12 +1541,15 @@ def fetch_analysis_data(
             start=start_date.strftime('%Y-%m-%d'),
             end=end_date.strftime('%Y-%m-%d'),
             interval='1d',
-            progress=False
+            progress=False,
+            auto_adjust=False
         )
         
         if benchmark_data.empty:
+            log.error("Benchmark (NIFTY 50) returned empty data")
+            log.line("═", 70)
             return pd.DataFrame(), pd.DataFrame()
-        
+
         # Get NIFTY 50 close prices
         benchmark_close = benchmark_data['Close']
         if isinstance(benchmark_close, pd.DataFrame):
@@ -1123,38 +1559,50 @@ def fetch_analysis_data(
         # Get valid trading dates from NIFTY 50
         valid_dates = benchmark_df.index
         
-        # Now fetch portfolio holdings
-        tickers = [f"{s}.NS" for s in symbols]
-        
+        # Now fetch portfolio holdings (.NS fallback; '.'-qualified symbols used as-is)
+        ticker_map = {_to_yf_ticker(s): s for s in symbols}
+        tickers = list(ticker_map.keys())
+
         portfolio_data = yf.download(
             tickers=tickers,
             start=start_date.strftime('%Y-%m-%d'),
             end=end_date.strftime('%Y-%m-%d'),
             interval='1d',
             progress=False,
-            threads=True
+            threads=True,
+            auto_adjust=False
         )
         
         if portfolio_data.empty:
+            log.warning(f"Benchmark OK ({len(benchmark_df)} rows) but portfolio data empty")
+            log.line("═", 70)
             return pd.DataFrame(), benchmark_df
-        
+
         # Get close prices
         if len(tickers) == 1:
             portfolio_close = portfolio_data['Close'].to_frame()
             portfolio_close.columns = [symbols[0]]
         else:
             portfolio_close = portfolio_data['Close']
-            portfolio_close.columns = [c.replace('.NS', '') for c in portfolio_close.columns]
+            portfolio_close.columns = [ticker_map.get(c, c) for c in portfolio_close.columns]
         
         # Align portfolio data to NIFTY 50 dates only
         portfolio_aligned = portfolio_close.reindex(valid_dates)
         
         # Forward fill any missing values (in case some stocks didn't trade)
         portfolio_aligned = portfolio_aligned.ffill()
-        
+
+        dt = time.perf_counter() - t0
+        log.success(
+            f"History loaded · {len(portfolio_aligned.columns)} holdings × "
+            f"{len(portfolio_aligned)} rows · benchmark {len(benchmark_df)} rows in {dt:.1f}s"
+        )
+        log.line("═", 70)
         return portfolio_aligned, benchmark_df
-        
+
     except Exception as e:
+        log.error(f"Analysis history fetch failed: {type(e).__name__}: {e}")
+        log.line("═", 70)
         return pd.DataFrame(), pd.DataFrame()
 
 
@@ -1423,10 +1871,25 @@ def render_analysis_mode(
     
     symbols = df['SYMBOL'].tolist()
     quantities = df.set_index('SYMBOL')['QUANTITY'].to_dict()
-    
-    spinner_text = f"Loading data from {anchor_date.strftime('%b %d, %Y')}..." if anchor_date else f"Loading {selected_tf} data..."
-    with st.spinner(spinner_text):
-        portfolio_prices, benchmark_prices = fetch_analysis_data(symbols, days_back)
+
+    # Themed progress card — shown only when the data window actually changes
+    # (new timeframe/anchor = real fetch). Cosmetic reruns hit cache and stay
+    # instant, so the bar is skipped. The native st.spinner is intentionally
+    # not used (UI/UX cohesion).
+    _an_key = (tuple(symbols), days_back, str(anchor_date))
+    _show_prog = st.session_state.get('_samhita_an_key') != _an_key
+    _prog_slot = st.empty() if _show_prog else None
+    if _prog_slot is not None:
+        progress_bar(_prog_slot, 30, "Fetching analysis history",
+                     f"yfinance · {len(symbols)} holdings + NIFTY 50")
+
+    portfolio_prices, benchmark_prices = fetch_analysis_data(symbols, days_back)
+
+    if _prog_slot is not None:
+        progress_bar(_prog_slot, 100, "History Ready",
+                     f"{selected_tf} · {len(portfolio_prices)} trading days")
+        _prog_slot.empty()
+        st.session_state['_samhita_an_key'] = _an_key
     
     if portfolio_prices.empty:
         st.error("Unable to fetch historical data. Please try again.")
@@ -1451,12 +1914,12 @@ def render_analysis_mode(
     port_value = port_value['Portfolio'].dropna()
     
     # Calculate returns
-    port_returns = port_value.pct_change().dropna()
+    port_returns = port_value.pct_change(fill_method=None).dropna()
     
     # Get benchmark returns
     bench_returns = None
     if not benchmark_prices.empty and BENCHMARK_NAME in benchmark_prices.columns:
-        bench_returns = benchmark_prices[BENCHMARK_NAME].pct_change().dropna()
+        bench_returns = benchmark_prices[BENCHMARK_NAME].pct_change(fill_method=None).dropna()
     
     # Compute metrics
     m = compute_metrics(port_returns, bench_returns)
@@ -1751,7 +2214,7 @@ def render_analysis_mode(
     render_section_header("Monthly Returns Heatmap", icon="grid", accent="emerald")
     
     # Calculate monthly returns
-    monthly = port_value.resample('ME').last().pct_change().dropna() * 100
+    monthly = port_value.resample('ME').last().pct_change(fill_method=None).dropna() * 100
     
     if len(monthly) > 1:
         # Create a proper month-year structure
