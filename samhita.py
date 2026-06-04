@@ -51,7 +51,7 @@ from ui.components import (
 
 # --- Constants ---
 VERSION = "v1.2.0"
-PRODUCT_NAME = "Samhita"
+PRODUCT_NAME = ""
 COMPANY = "@thebullishvalue"
 
 # Obsidian Quant chart palette
@@ -845,7 +845,7 @@ def main() -> None:
 
     # Terminal masthead
     render_header(
-        "SAMHITA",
+        "Samhita",
         "संहिता · Portfolio Tracker · Real-Time Analytics & Performance Insights",
     )
 
