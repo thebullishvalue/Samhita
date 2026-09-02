@@ -1358,6 +1358,36 @@
     margin-top: 3px; letter-spacing: 0.12em; text-transform: uppercase;
 }
 
+/* ── Streamlit's nav separator — removed, not restyled ────────────────────
+   `stSidebarNavSeparator` draws a rule under the page navigation, and it fails
+   twice over.
+
+   It is REDUNDANT: the rail contract above states that the group label owns
+   the boundary, and the label under this rule (SESSION) already draws one.
+   Two rules for one transition is the same fault as a panel title repeating
+   its section header — a second boundary four pixels from the first.
+
+   It is also painted `rgba(230,234,241,0.2)` — the DARK theme's ink at a fifth
+   opacity — which belongs to neither appearance here. On Slate it reads as a
+   visible line competing with the label's own; on Paper it is invisible and
+   all the reader gets is its height, which is unexplained blank space between
+   the navigation and the first group.
+
+   Hidden rather than recoloured, so its height goes with it and the gap from
+   the nav to the first group label is the contract's 24px and nothing else. */
+[data-testid="stSidebarNavSeparator"] { display: none !important; }
+
+/* The rail's content box carries a 24px top padding of Streamlit's own, which
+   lands on TOP of the first group label's contract margin — so the boundary
+   between the navigation and the first group measured 48px against the 24px
+   every other group boundary in the rail measures. Removing the nav separator
+   above made that visible rather than causing it: a doubled gap reads as a
+   missing element, which is exactly the "blank space" it looked like.
+   The brand does not need this reserve — it is positioned against the sidebar
+   itself, not this box (see the `position: static` flattening above). */
+[data-testid="stSidebarUserContent"] { padding-top: 0 !important; }
+
+
 /* Group label. Every control in the rail belongs to exactly one labelled
    group — INSTRUMENT, SESSION, MODEL, APPEARANCE — so the rail reads as an
    outline of what can be changed rather than a pile of widgets. */
