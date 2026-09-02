@@ -797,6 +797,35 @@
 }
 .metric-card { flex: 1 1 auto; }
 
+/* ── Streamlit's prose pull, cancelled under our own blocks ───────────────
+   Streamlit gives every `stMarkdownContainer` `margin-bottom: -1rem`. That is
+   a sensible correction for PROSE — it cancels the trailing margin of the last
+   `<p>` so a paragraph block does not double its own spacing. Our components
+   are not prose: a metric card is a bordered box with no trailing paragraph to
+   correct, so the pull is uncompensated and drags the card's ink 16px below
+   the container that holds it.
+
+   Measured on the Holdings Analytics page before this rule: the KPI row's
+   painted bottom and the panel's painted top were the SAME pixel — the 16px
+   block gap existed between the wrapper boxes and was entirely consumed by the
+   overhang, so a bordered card row sat flush against a bordered panel row.
+   Every KPI row in the app was 16px closer to what follows it than the section
+   contract states.
+
+   Scoped to the components that are BLOCKS (a box of their own), not to the
+   inline/caption tiers, which genuinely do behave like prose and whose spacing
+   was measured with the pull in place. */
+[data-testid="stMarkdownContainer"]:has(> .metric-card),
+[data-testid="stMarkdownContainer"]:has(> .rail-readout),
+[data-testid="stMarkdownContainer"]:has(> .interp-card),
+[data-testid="stMarkdownContainer"]:has(> .info-box),
+[data-testid="stMarkdownContainer"]:has(> .warning-box),
+[data-testid="stMarkdownContainer"]:has(> .empty-state),
+[data-testid="stMarkdownContainer"]:has(> .notice-rail) {
+    margin-bottom: 0 !important;
+}
+
+
 .metric-card {
     position: relative;
     display: flex; flex-direction: column;
