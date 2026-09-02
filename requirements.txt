@@ -1,4 +1,11 @@
-streamlit
+# PINNED EXACTLY, not ranged. The stylesheet repairs Streamlit's own layout
+# wrappers, and those wrappers change between minor versions — 1.52 inserts an
+# anonymous flex row between stMarkdown and stMarkdownContainer, which moves
+# every such rule. A range (">=1.51,<1.53") is how you end up verifying the UI
+# against a frontend you never deploy: local resolves one version, the host
+# resolves another, and the difference only shows up in production. 1.51.0 is
+# the frontend this design system was verified against.
+streamlit==1.51.0
 pandas
 plotly
 numpy
