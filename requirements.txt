@@ -1,4 +1,33 @@
-streamlit
+# ─── DEPLOY ON PYTHON 3.11–3.13 (3.12 recommended) ──────────────────────────
+#
+# This is not a preference, it is a hard constraint of the pin below, and it is
+# recorded here because Streamlit Community Cloud has no `runtime.txt`: the
+# Python version is chosen ONCE in the deploy dialog's Advanced settings and
+# cannot be changed afterwards without deleting and redeploying the app.
+#
+# What breaks on 3.14: streamlit 1.51.0 requires `pyarrow<22`, and pyarrow
+# publishes no cp314 wheel before 22.0.0. pip therefore falls back to building
+# pyarrow 21 from source — an Arrow C++ compile that fails in the Cloud build
+# container. The failure reads as a pyarrow error and is really a Python
+# version mismatch.
+#
+# 3.12 is also what this app is developed and verified on, which is the other
+# half of the same rule: deploy the interpreter you tested against.
+#
+# ─── STREAMLIT IS PINNED EXACTLY, not ranged ────────────────────────────────
+#
+# The stylesheet repairs Streamlit's own layout wrappers, and those wrappers
+# change between minor versions — 1.52 inserts an anonymous flex row between
+# stMarkdown and stMarkdownContainer, which moves every such rule. A range
+# (">=1.51,<1.53") is how you end up verifying the UI against a frontend you
+# never deploy: local resolves one version, the host resolves another, and the
+# difference only shows up in production. 1.51.0 is the frontend this design
+# system was verified against.
+#
+# Moving to Python 3.14 would mean streamlit >=1.57 (the first series whose
+# pyarrow floor admits 22+). That is a different frontend, so the DOM-repair
+# rules in ui/theme.css would have to be re-verified against it first.
+streamlit==1.51.0
 pandas
 plotly
 numpy
