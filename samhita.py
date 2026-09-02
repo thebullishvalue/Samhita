@@ -328,19 +328,37 @@ def _tier1_yahoo_quote(symbols: list[str]) -> dict[str, Quote]:
     if not symbols:
         return out
     ticker_map = {_to_yf_ticker(s): s for s in symbols}
-    try:
-        payload = yf.YfData().get_raw_json(
-            _YAHOO_QUOTE_URL,
-            params={
-                "symbols": ",".join(ticker_map),
-                "fields": ("regularMarketPrice,regularMarketPreviousClose,"
-                           "marketState,regularMarketTime"),
-            },
-        )
-        results = (payload or {}).get("quoteResponse", {}).get("result", []) or []
-    except Exception as e:
-        log.warning(f"Yahoo batch quote unavailable ({type(e).__name__}); "
-                    f"falling through to history")
+    params = {
+        "symbols": ",".join(ticker_map),
+        "fields": ("regularMarketPrice,regularMarketPreviousClose,"
+                   "marketState,regularMarketTime"),
+    }
+    # RETRIED ONCE, on a fresh client. This tier is the only source that states
+    # a previous close outright, and losing it demotes the whole portfolio to a
+    # basis that has to be repaired afterwards — so a transient failure is
+    # worth one more attempt rather than a tier's worth of degradation.
+    # yfinance holds a process-wide session with a cookie/crumb it refreshes
+    # lazily, and a rerun landing mid-refresh is the observed intermittent
+    # failure; a second call after that refresh completes succeeds.
+    results: list = []
+    last_err: Exception | None = None
+    for attempt in (1, 2):
+        try:
+            payload = yf.YfData().get_raw_json(_YAHOO_QUOTE_URL, params=params)
+            results = (payload or {}).get("quoteResponse", {}).get("result", []) or []
+            if results:
+                break
+            last_err = RuntimeError("empty quoteResponse")
+        except Exception as e:      # noqa: BLE001 — any failure is retryable here
+            last_err = e
+        if attempt == 1:
+            time.sleep(0.6)
+    if not results:
+        # The MESSAGE, not just the class. A bare "(AttributeError)" said a
+        # tier was down without saying why, and this tier going down quietly is
+        # what put the portfolio on a mixed basis in the first place.
+        log.warning(f"Yahoo batch quote unavailable after 2 tries "
+                    f"({type(last_err).__name__}: {last_err}); using history")
         return out
 
     states: set[str] = set()
@@ -404,6 +422,26 @@ def _tier2_yahoo_history(symbols: list[str]) -> dict[str, Quote]:
 # One file per exchange, covering every scrip the exchange traded that day.
 # Official numbers, but end-of-day: only current once the session has closed.
 
+def _bhav_session_date(df: pd.DataFrame) -> "date | None":
+    """The session a bhavcopy frame actually covers, read from its own TradDt.
+
+    THE DATE MUST COME FROM THE DATA. Asking the archive for a date and then
+    trusting that date is what let a file for one session be labelled with
+    another: NSE has no bhavcopy for a session that has not settled, the
+    downloader saves whatever the URL returned under the requested filename,
+    and the caller then reported the date it wanted rather than the date it
+    got. Everything downstream — the freshness gate especially — is only as
+    honest as this value.
+    """
+    if df is None or 'TradDt' not in df.columns:
+        return None
+    try:
+        stamps = pd.to_datetime(df['TradDt'], errors='coerce').dropna()
+        return stamps.iloc[0].date() if len(stamps) else None
+    except (TypeError, ValueError):
+        return None
+
+
 def _bhav_lookup(df: pd.DataFrame, eq_only: bool) -> dict[str, tuple[float, float]]:
     """Build {TckrSymb: (close, prev_close)} from a UDiFF bhavcopy frame."""
     lookup: dict[str, tuple[float, float]] = {}
@@ -433,10 +471,20 @@ def _nse_bhavcopy() -> tuple[dict[str, tuple[float, float]], date | None]:
         try:
             df = pd.read_csv(bhavcopy_save(d, folder))
             df.columns = [c.strip() for c in df.columns]
+            got = _bhav_session_date(df)
             lookup = _bhav_lookup(df, eq_only=True)
-            if lookup:
-                log.detail(f"NSE bhavcopy {d:%d-%b-%Y} · {len(lookup)} scrips")
-                return lookup, d
+            if not lookup or got is None:
+                continue
+            if got != d:
+                # The archive answered with a DIFFERENT session than the one
+                # asked for — on a date with no bhavcopy yet the downloader
+                # will happily save an error page, or the previous session's
+                # file, under the requested name and cache it there. Skip it
+                # and let the loop ask for the session it actually is.
+                log.detail(f"NSE bhavcopy asked {d:%d-%b} · file is {got:%d-%b}; "
+                           f"using the file's own session")
+            log.detail(f"NSE bhavcopy {got:%d-%b-%Y} · {len(lookup)} scrips")
+            return lookup, got
         except Exception:
             continue
     log.warning("NSE bhavcopy unavailable (last 7 days)")
@@ -458,10 +506,12 @@ def _bse_bhavcopy() -> tuple[dict[str, tuple[float, float]], date | None]:
             try:
                 df = pd.read_csv(b.bhavcopyReport(d))
                 df.columns = [c.strip() for c in df.columns]
+                got = _bhav_session_date(df)
                 lookup = _bhav_lookup(df, eq_only=False)
-                if lookup:
-                    log.detail(f"BSE bhavcopy {d:%d-%b-%Y} · {len(lookup)} scrips")
-                    return lookup, d
+                if not lookup or got is None:
+                    continue
+                log.detail(f"BSE bhavcopy {got:%d-%b-%Y} · {len(lookup)} scrips")
+                return lookup, got
             except Exception:
                 continue
         log.warning("BSE bhavcopy unavailable (last 7 days)")
@@ -581,6 +631,74 @@ _TIERS: tuple[tuple[str, str, Any], ...] = (
 )
 
 
+
+#: Sources whose previous close is the previous SESSION's close, stated by the
+#: venue or by the quote itself. Everything else infers it.
+_AUTHORITATIVE_PREV = frozenset({
+    "yahoo:quote", "nse:live", "bse:live", "nse:bhavcopy", "bse:bhavcopy",
+})
+
+
+def _repair_prev_close(resolved: dict[str, Quote]) -> None:
+    """Replace an inferred previous close with the exchange's own.
+
+    `yahoo:history` cannot state a previous SESSION — it steps back to the
+    previous available BAR, and Yahoo's daily series drops whole sessions for
+    some tickers. Measured on this portfolio: 20 of 32 holdings had no bar for
+    the last settled session, so their "previous close" was two sessions old
+    and today's change was silently a two-day change. That is the whole reason
+    the same portfolio, on the same data, read -0.54% when the quote API
+    answered and -0.95% when it did not — and why the figure moved whenever a
+    transient Yahoo failure changed which tier answered.
+
+    The exchange bhavcopy settles it exactly: for a session still in progress,
+    the previous close IS the last SETTLED session's close. So a bhavcopy that
+    was too stale to PRICE a holding is precisely the right BASIS for it — the
+    two uses have opposite freshness requirements, which is why one pass could
+    never serve both. Verified 32/32 against the quote API's own previousClose.
+
+    Only runs when something actually needs repairing, so the healthy path
+    (quote answers for everything) costs no extra download.
+    """
+    needy = [s for s, q in resolved.items()
+             if q.source not in _AUTHORITATIVE_PREV]
+    if not needy:
+        return
+
+    today = datetime.now().date()
+    by_exch: dict[str, dict[str, str]] = {'NSE': {}, 'BSE': {}}
+    for sym in needy:
+        c = _classify(sym)
+        if c:
+            by_exch[c[0]][c[1]] = sym
+
+    fixed = 0
+    for exch, loader in (('NSE', _nse_bhavcopy), ('BSE', _bse_bhavcopy)):
+        wanted = by_exch[exch]
+        if not wanted:
+            continue
+        lookup, session = loader()
+        if not lookup or session is None:
+            continue
+        for bare, sym in wanted.items():
+            hit = lookup.get(bare)
+            if not hit:
+                continue
+            # A settled session BEFORE today: its close is today's basis.
+            # Today's own settled file: its PrvsClsgPric is.
+            basis = hit[0] if session < today else hit[1]
+            if pd.isna(basis):
+                continue
+            q = resolved[sym]
+            if not pd.isna(q.prev_close) and abs(q.prev_close - basis) < 0.005:
+                continue
+            resolved[sym] = q._replace(prev_close=float(basis))
+            fixed += 1
+    if fixed:
+        log.detail(f"Previous close repaired from exchange settlement · "
+                   f"{fixed} holding(s)")
+
+
 @st.cache_data(ttl=300, show_spinner=False)
 def resolve_quotes(symbols: tuple[str, ...]) -> dict[str, Quote]:
     """Resolve {symbol: Quote} by walking the source hierarchy in order.
@@ -645,6 +763,11 @@ def resolve_quotes(symbols: tuple[str, ...]) -> dict[str, Quote]:
         log.warning(f"No live source responded for {len(backstopped)} symbol(s); "
                     f"using stale {stale.source} ({stale.asof}) close as the price")
         log.item("Backstopped", _fmt_symlist(sorted(backstopped)))
+
+    # The PRICE is now settled; the BASIS may not be. A holding priced from a
+    # bar series carries an inferred previous close, and that is the one input
+    # today's change cannot afford to have guessed.
+    _repair_prev_close(resolved)
 
     unresolved = [s for s in symbols if s not in resolved]
     by_source: dict[str, int] = {}
@@ -714,6 +837,11 @@ def calculate_metrics(
     price_map = {s: (quotes[s].last if s in quotes else np.nan) for s in symbols}
     prev_close_map = {s: (quotes[s].prev_close if s in quotes else np.nan)
                       for s in symbols}
+    # Which tier answered, and for which session. Carried onto the frame so the
+    # notice rail can say what the numbers rest on — a run that quietly fell to
+    # a lesser source is exactly the run whose figures deserve a caveat.
+    source_map = {s: (quotes[s].source if s in quotes else "") for s in symbols}
+    asof_map = {s: (quotes[s].asof if s in quotes else None) for s in symbols}
 
     _p(90, "Computing Analytics", f"{len(symbols)} holdings")
 
@@ -723,6 +851,8 @@ def calculate_metrics(
 
     # 4. Previous close, the basis for today's change
     df['PREV CLOSE'] = df['SYMBOL'].map(prev_close_map)
+    df['PRICE SOURCE'] = df['SYMBOL'].map(source_map)
+    df['PRICE ASOF'] = df['SYMBOL'].map(asof_map)
 
     # 5. Perform calculations using the updated 'CURRENT PRICE'
     df['INVESTED'] = df['QUANTITY'] * df['AVERAGE PRICE']
@@ -849,6 +979,55 @@ def _apply_theme(fig, *, height: int = 360, show_legend: bool = False,
         style_axes(fig, y_title=y_title, x_title=x_title)
     else:
         apply_default_hover(fig)
+
+
+def _pad_for_value_labels(fig, *, horizontal: bool = True,
+                          frac: float = 0.18) -> None:
+    """Extend the value axis so labels drawn OUTSIDE the bars fit inside it.
+
+    `textposition="outside"` puts the label past the end of its bar, and
+    `cliponaxis=False` — which the tallest bar needs, or its label is sheared
+    off at the axis — lets it draw past the plot area entirely. The two
+    together put the longest bar's label on top of the category ticks: on Top
+    Losers, FMCGIETF's bar reached the left edge and its "-9.8%" landed on the
+    tick that names it.
+
+    Neither setting is wrong; what was missing is room. A bar is measured from
+    zero, so the range is anchored there and padded only on the side(s) that
+    actually carry bars — a chart of gains does not reserve space to the left
+    of zero for labels that will never be drawn there.
+
+    Written per AXIS rather than per figure so it also serves the two-subplot
+    contribution chart, whose halves are on different scales.
+    """
+    vals_by_axis: dict[str, list[float]] = {}
+    for tr in fig.data:
+        if getattr(tr, "type", "") != "bar":
+            continue
+        vals = tr.x if horizontal else tr.y
+        if vals is None:
+            continue
+        key = (tr.xaxis or "x") if horizontal else (tr.yaxis or "y")
+        for v in vals:
+            try:
+                f = float(v)
+            except (TypeError, ValueError):
+                continue
+            if f == f:                      # not NaN
+                vals_by_axis.setdefault(key, []).append(f)
+
+    for key, vals in vals_by_axis.items():
+        if not vals:
+            continue
+        lo, hi = min(min(vals), 0.0), max(max(vals), 0.0)
+        span = (hi - lo) or abs(hi) or 1.0
+        pad = span * frac
+        rng = [lo - (pad if lo < 0 else 0.0), hi + (pad if hi > 0 else 0.0)]
+        name = ("xaxis" if horizontal else "yaxis") + (key[1:] if len(key) > 1 else "")
+        try:
+            fig.layout[name].range = rng
+        except (KeyError, ValueError):
+            continue
 
 
 def _gain_colorscale(series: pd.Series) -> dict:
@@ -1002,6 +1181,37 @@ def _quote_notices(df: pd.DataFrame) -> list[dict]:
             "body": (f"{_fmt_symlist(stale)} resolved a price but no prior session "
                      f"to measure it against; excluded from today's change."),
         })
+
+    # A holding priced from a session that has already settled is not wrong,
+    # but it is not today either — and mixing settled prices with live ones is
+    # what made today's change move between refreshes. Say so.
+    if 'PRICE ASOF' in df.columns:
+        _today = datetime.now().date()
+        settled = df.loc[df['PRICE ASOF'].apply(
+            lambda d: d is not None and not pd.isna(d) and d < _today), 'SYMBOL'].tolist()
+        if settled:
+            notices.append({
+                "kind": "warning",
+                "title": "Priced from a settled session",
+                "body": (f"{_fmt_symlist(settled)} could not be priced live and carry "
+                         f"the last settled close. Today's change for these is zero "
+                         f"by construction, not a reading of no movement."),
+            })
+
+    # The basis is a portfolio-level aggregate: if it comes from more than one
+    # place the total is only as consistent as the mix, so name the mix.
+    if 'PRICE SOURCE' in df.columns:
+        mix = df['PRICE SOURCE'].value_counts().to_dict()
+        primary = "yahoo:quote"
+        if mix and set(mix) != {primary}:
+            summary = " · ".join(f"{k or 'unpriced'} {v}" for k, v in mix.items())
+            notices.append({
+                "kind": "info",
+                "title": "Mixed price sources",
+                "body": (f"{summary}. The previous-close basis is reconciled to "
+                         f"exchange settlement, so today's change is comparable "
+                         f"across sources; the prices themselves are not all live."),
+            })
     return notices
 
 
@@ -1352,6 +1562,7 @@ def _render_dashboard(df: pd.DataFrame, metrics: dict) -> None:
                 margin=CHART_MARGIN_BAR,
                 title="Absolute Return %",
             )
+            _pad_for_value_labels(fig_gainers)
             render_chart_panel(fig_gainers, key="top-gainers", title="Top Gainers",
                                context="best 5 by return on cost")
 
@@ -1379,6 +1590,7 @@ def _render_dashboard(df: pd.DataFrame, metrics: dict) -> None:
                 margin=CHART_MARGIN_BAR,
                 title="Absolute Return %",
             )
+            _pad_for_value_labels(fig_losers)
             render_chart_panel(fig_losers, key="top-losers", title="Top Losers",
                                context="worst 5 by return on cost")
 
@@ -1522,6 +1734,8 @@ def _render_dashboard(df: pd.DataFrame, metrics: dict) -> None:
             y_title="Contribution (%)",
         )
         fig_waterfall.update_xaxes(tickangle=45)
+        # Vertical bars: the labels sit above (or below) the bar ends.
+        _pad_for_value_labels(fig_waterfall, horizontal=False, frac=0.12)
         # The values are PERCENTAGE POINTS of the portfolio's return, not
         # rupees — the panel said "₹ contribution" over a "%"-titled axis.
         render_chart_panel(fig_waterfall, key="gain-waterfall",
@@ -1791,6 +2005,7 @@ def _render_dashboard(df: pd.DataFrame, metrics: dict) -> None:
         # A horizontal bar's categories are the SYMBOLS; a grid across them
         # is a line between every pair of names and says nothing.
         fig_contrib.update_yaxes(showgrid=False, zeroline=False)
+        _pad_for_value_labels(fig_contrib)
 
         render_chart_panel(fig_contrib, key="contribution",
                                units="return pp · risk share %")
@@ -2516,13 +2731,23 @@ def render_analysis_mode(
             line_color=chart_color("emerald"),
             annotation_text=f"μ: {port_returns.mean()*100:.2f}%",
             annotation_position="top",
+            # The label carries its line's own claim, so the reader does not
+            # have to trace a dotted rule back to a legend that is not there.
+            annotation_font=dict(size=10, family=CHART_FONT,
+                                 color=chart_color("emerald")),
         )
         fig_hist.add_vline(
             x=m.get('var_95', 0),
             line_dash="dash",
             line_color=chart_color("rose"),
             annotation_text=f"VaR: {m.get('var_95', 0):.1f}%",
-            annotation_position="bottom left",
+            # TOP, like the mean beside it. "bottom left" put this label at the
+            # foot of the plot — which on a histogram is exactly where the bars
+            # are, so it read as grey type over five blue columns. A reference
+            # line's label belongs clear of the marks it is a reference FOR.
+            annotation_position="top",
+            annotation_font=dict(size=10, family=CHART_FONT,
+                                 color=chart_color("rose")),
         )
         _apply_theme(
             fig_hist, height=CHART_HEIGHT_MD, show_legend=False,
@@ -2770,6 +2995,7 @@ def render_analysis_mode(
             show_legend=False, margin=CHART_MARGIN_BAR,
         )
         fig_attr.update_yaxes(showgrid=False, zeroline=False)
+        _pad_for_value_labels(fig_attr)
         render_chart_panel(fig_attr, key="attribution",
                            units="pp of period return")
     
