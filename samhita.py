@@ -38,6 +38,7 @@ from ui.theme import (
     chart_rgba,
     inject_css,
     ink,
+    ink_muted,
     ink_subtle,
     panel_bg,
     progress_bar,
@@ -1337,8 +1338,12 @@ def _render_dashboard(df: pd.DataFrame, metrics: dict) -> None:
                 marker_color=[chart_color("emerald") if v >= 0 else chart_color("rose")
                               for v in top_5_gainers['GAIN %'][::-1]],
                 text=[f"{x:+.1f}%" for x in top_5_gainers['GAIN %'][::-1]],
-                textposition='auto',
-                textfont=dict(size=11, color=ink(), family=CHART_FONT),
+                # OUTSIDE: `auto` drops the value inside the bar and paints it
+                # in the app's ink — the same darkness as the saturated fill
+                # it lands on, and rotated 90 degrees in a narrow column.
+                textposition='outside',
+                cliponaxis=False,
+                textfont=dict(size=11, color=ink_muted(), family=CHART_FONT),
                 hovertemplate="<b>%{y}</b><br>Return: %{x:.2f}%<br>Weight: %{customdata[0]:.1f}%<br>Contribution: %{customdata[1]:.2f}%<extra></extra>",
                 customdata=top_5_gainers[['WT', 'WEIGHTED RETURN %']][::-1].values,
             ))
@@ -1360,8 +1365,12 @@ def _render_dashboard(df: pd.DataFrame, metrics: dict) -> None:
                 marker_color=[chart_color("rose") if v < 0 else chart_color("emerald")
                               for v in top_5_losers['GAIN %']],
                 text=[f"{x:+.1f}%" for x in top_5_losers['GAIN %']],
-                textposition='auto',
-                textfont=dict(size=11, color=ink(), family=CHART_FONT),
+                # OUTSIDE: `auto` drops the value inside the bar and paints it
+                # in the app's ink — the same darkness as the saturated fill
+                # it lands on, and rotated 90 degrees in a narrow column.
+                textposition='outside',
+                cliponaxis=False,
+                textfont=dict(size=11, color=ink_muted(), family=CHART_FONT),
                 hovertemplate="<b>%{y}</b><br>Return: %{x:.2f}%<br>Weight: %{customdata[0]:.1f}%<br>Contribution: %{customdata[1]:.2f}%<extra></extra>",
                 customdata=top_5_losers[['WT', 'WEIGHTED RETURN %']].values,
             ))
@@ -1489,19 +1498,34 @@ def _render_dashboard(df: pd.DataFrame, metrics: dict) -> None:
             y=contrib_sorted['WEIGHTED RETURN %'],
             marker_color=colors,
             text=[f"{x:+.2f}%" for x in contrib_sorted['WEIGHTED RETURN %']],
-            textposition='auto',
-            textfont=dict(size=10, color=ink(), family=CHART_FONT),
+            # OUTSIDE, and horizontal. `auto` lets Plotly drop the label inside
+            # the bar whenever it "fits", and in a 37px-wide column that means
+            # rotating it 90 degrees — so every value read bottom-to-top in the
+            # app's ink ON a saturated fill of the same darkness. A value label
+            # belongs on the panel surface, where the ink it is drawn in is the
+            # ink that surface was contrast-checked against.
+            textposition='outside',
+            textangle=0,
+            # Let the tallest bar's label draw into the margin instead of being
+            # clipped at the axis.
+            cliponaxis=False,
+            textfont=dict(size=9, color=ink_muted(), family=CHART_FONT),
             hovertemplate="<b>%{x}</b><br>Contribution: %{y:.3f}%<br>Return: %{customdata[0]:.1f}%<br>Weight: %{customdata[1]:.1f}%<extra></extra>",
             customdata=contrib_sorted[['GAIN %', 'WT']].values,
         ))
         _apply_theme(
             fig_waterfall, height=CHART_HEIGHT_LG, show_legend=False,
-            margin=CHART_MARGIN_ROTATED,
+            # Extra headroom: the outside label on the tallest bar needs
+            # somewhere to sit that is not the panel's edge.
+            margin={**CHART_MARGIN_ROTATED, "t": 30},
             title="Weighted Return Contribution · sorted by impact",
             y_title="Contribution (%)",
         )
         fig_waterfall.update_xaxes(tickangle=45)
-        render_chart_panel(fig_waterfall, key="gain-waterfall", units="₹ contribution")
+        # The values are PERCENTAGE POINTS of the portfolio's return, not
+        # rupees — the panel said "₹ contribution" over a "%"-titled axis.
+        render_chart_panel(fig_waterfall, key="gain-waterfall",
+                           units="pp of portfolio return")
 
         # ── Portfolio Composition ───────────────────────────────────────
         render_section_header(
@@ -1716,7 +1740,10 @@ def _render_dashboard(df: pd.DataFrame, metrics: dict) -> None:
 
         fig_contrib = make_subplots(rows=1, cols=2, shared_yaxes=True,
                                     subplot_titles=('Return Contribution', 'Risk Contribution'),
-                                    horizontal_spacing=0.02)
+                                    # Room for the left panel's outside value
+                                    # labels, which at 0.02 landed inside the
+                                    # right panel.
+                                    horizontal_spacing=0.10)
         # Plotly draws subplot titles in ITS default 16px sans. These name
         # two columns of a chart, which is the app's caption tier.
         for _ann in fig_contrib.layout.annotations:
@@ -1731,8 +1758,12 @@ def _render_dashboard(df: pd.DataFrame, metrics: dict) -> None:
             orientation='h',
             marker_color=colors_ret,
             text=[f"{x:.2f}%" for x in contrib_df['WEIGHTED RETURN %']],
-            textposition='auto',
-            textfont=dict(size=9, color=ink(), family=CHART_FONT),
+            # OUTSIDE: `auto` drops the value inside the bar and paints it
+            # in the app's ink — the same darkness as the saturated fill
+            # it lands on, and rotated 90 degrees in a narrow column.
+            textposition='outside',
+            cliponaxis=False,
+            textfont=dict(size=9, color=ink_muted(), family=CHART_FONT),
             showlegend=False,
         ), row=1, col=1)
 
@@ -1742,8 +1773,12 @@ def _render_dashboard(df: pd.DataFrame, metrics: dict) -> None:
             orientation='h',
             marker_color=chart_color("accent"),
             text=[f"{x:.1f}%" for x in contrib_df['Risk Weight']],
-            textposition='auto',
-            textfont=dict(size=9, color=ink(), family=CHART_FONT),
+            # OUTSIDE: `auto` drops the value inside the bar and paints it
+            # in the app's ink — the same darkness as the saturated fill
+            # it lands on, and rotated 90 degrees in a narrow column.
+            textposition='outside',
+            cliponaxis=False,
+            textfont=dict(size=9, color=ink_muted(), family=CHART_FONT),
             showlegend=False,
         ), row=1, col=2)
 
@@ -1757,7 +1792,8 @@ def _render_dashboard(df: pd.DataFrame, metrics: dict) -> None:
         # is a line between every pair of names and says nothing.
         fig_contrib.update_yaxes(showgrid=False, zeroline=False)
 
-        render_chart_panel(fig_contrib, key="contribution", units="pp of portfolio return")
+        render_chart_panel(fig_contrib, key="contribution",
+                               units="return pp · risk share %")
         
         # Statistics as READOUTS, not markdown bullets. A bullet list is
         # prose; these are figures, and figures belong in the app's
@@ -2540,7 +2576,8 @@ def render_analysis_mode(
                     title="Rolling Sharpe Ratio",
                 )
                 fig_rs.update_xaxes(tickformat='%b %Y')
-                render_chart_panel(fig_rs, key="rolling-sharpe", units="60d rolling")
+                render_chart_panel(fig_rs, key="rolling-sharpe",
+                                   units=f"{rolling_window}d rolling")
 
         with col_rb:
             if bench_returns is not None and len(bench_returns) > rolling_window:
@@ -2574,7 +2611,8 @@ def render_analysis_mode(
                             title=f"Rolling Beta vs {BENCHMARK_NAME}",
                         )
                         fig_rb.update_xaxes(tickformat='%b %Y')
-                        render_chart_panel(fig_rb, key="rolling-beta", units="60d rolling")
+                        render_chart_panel(fig_rb, key="rolling-beta",
+                                           units=f"{rolling_window}d rolling")
 
     # ── Monthly Returns Heatmap ─────────────────────────────────────────────
     render_section_header(
@@ -2718,8 +2756,12 @@ def render_analysis_mode(
             orientation='h',
             marker_color=colors,
             text=[f"{x:+.2f}%" for x in attr_df['Contribution']],
-            textposition='auto',
-            textfont=dict(size=10, color=ink(), family=CHART_FONT),
+            # OUTSIDE: `auto` drops the value inside the bar and paints it
+            # in the app's ink — the same darkness as the saturated fill
+            # it lands on, and rotated 90 degrees in a narrow column.
+            textposition='outside',
+            cliponaxis=False,
+            textfont=dict(size=10, color=ink_muted(), family=CHART_FONT),
             hovertemplate="<b>%{y}</b><br>Return: %{customdata[0]:.1f}%<br>Weight: %{customdata[1]:.1f}%<br>Contribution: %{x:.2f}%<extra></extra>",
             customdata=attr_df[['Return', 'Weight']].values,
         ))
