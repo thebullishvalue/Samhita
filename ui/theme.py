@@ -30,7 +30,7 @@ from pathlib import Path
 import streamlit as st
 
 # ── Product identity ────────────────────────────────────────────────────────
-VERSION = "v2.0.0"
+VERSION = "v2.0.1"
 PRODUCT_NAME = "Samhita"
 COMPANY = "@thebullishvalue"
 
