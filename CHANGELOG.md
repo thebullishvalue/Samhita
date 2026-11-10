@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v2.0.3] - 2026-11-10
+
+### Fixed
+- **Black bands on phones in dark mode.** With both `[theme.light]` and `[theme.dark]` in
+  `.streamlit/config.toml`, Streamlit's native widgets followed the viewer's OS while the app
+  follows its Paper/Slate toggle: on a dark-mode phone in Paper, the date picker's empty cells
+  and the tab strip's overflow fade were painted near-black. The config now has exactly one
+  `[theme]` section (a fixed native layer for every viewer, as in Pragyam), the calendar is
+  painted from the app's own tokens in both appearances (Pragyam's calendar block), and the
+  tab-strip fade uses the page background token.
+
 ## [v2.0.2] - 2026-11-10
 
 ### Changed
