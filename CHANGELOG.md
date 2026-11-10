@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v2.0.2] - 2026-11-10
+
+### Changed
+- **Tattva's tab icon.** The browser-tab icon is Tattva's exact mark (its cobalt
+  ring-and-line, `#3D6FE8`, in Tattva's own base64 encoding), as in Nishkarsh, Nivesa and Swing,
+  so the apps' tabs match. It was the same mark in a lighter blue (`#4C7DF0`).
+
 ## [v2.0.1] - 2026-11-10
 
 ### Fixed
