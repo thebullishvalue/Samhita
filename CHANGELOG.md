@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v2.0.4] - 2026-11-13
+
+### Fixed
+- **The date picker's chosen day had no fill.** This BaseWeb build marks the chosen day with
+  `aria-label="Selected. …"`, not `aria-selected`, so the calendar block's reinstatement never
+  matched and its transparent reset wiped the fill. The chosen day is filled from the accent again,
+  in both appearances.
+
 ## [v2.0.3] - 2026-11-10
 
 ### Fixed
