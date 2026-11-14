@@ -1667,6 +1667,9 @@ def _render_dashboard(df: pd.DataFrame, metrics: dict) -> None:
             ),
             text=_labels,
             textposition=_positions,
+            # A name beside a point at the plot's edge was cut by Plotly's
+            # plot-area clip; names may draw into the margin.
+            cliponaxis=False,
             textfont=dict(size=9, color=ink(), family=CHART_FONT),
             # The symbol moves into customdata because `text` is now blank
             # for most points — hover must still name every one of them.
