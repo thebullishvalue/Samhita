@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v2.0.7] - 2026-11-14
+### Fixed
+- **A fidelity pass over every page.** Every page, tab and expander was scanned at 1440, 1024, 834
+  and 390px in Paper and Slate for clipped or overlapping text, content past its panel or the
+  page, chart-label collisions, native-theme colours on Paper and unreadable contrast; each
+  defect was fixed at the rule that caused it.
+  - *Panel header rows wrap.* On a phone a header's control (the 3M…ALL window strip) was pushed
+    wholly outside its panel, invisible and untappable; it now drops to its own line.
+  - *Nothing in the rail is cut with an ellipsis.* Page names on the 200px tablet rail, the
+    tagline, and a select's value wrap instead.
+  - *The page no longer drags sideways.* A KPI card's hidden tooltip opened to the right of an
+    icon in the card's top-right corner and widened the page by 171px; it opens over its card.
+  - *No native near-white or near-black on Paper.* The open-rail chevron (the only way to the
+    navigation on a phone or tablet), help marks, slider min/max labels, expander rows and
+    borders, toasts and unstyled widget labels are painted from tokens.
+  - *Fields share one height.* A text input's wrapper kept a transparent 1px border, so every
+    text field was 2px taller than the select or number field beside it.
+  - *The instrument chip* no longer clips the tops of its capitals.
+  - *Charts:* reference-line labels (Max drawdown, Target, Market, 50%, 80%) sit inside the plot
+    instead of past its edge; value labels get room on narrow screens; the gain waterfall's names
+    are vertical (every other one on a tablet or phone); the monthly heatmap's values hide on a
+    phone (tap readout); the contribution chart's subplot titles fit half a phone.
+
 ## [v2.0.6] - 2026-11-13
 ### Fixed
 - **Nothing sits on a panel's edge.**
