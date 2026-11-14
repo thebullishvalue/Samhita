@@ -2394,7 +2394,7 @@ def render_analysis_mode(
 
 
     # ── Header & timeframe selector ─────────────────────────────────────────
-    header_desc = "Institutional-Grade Performance Analysis"
+    header_desc = "Institutional-grade performance analysis"
     if anchor_date:
         header_desc += f" · Anchor: {anchor_date.strftime('%b %d, %Y')}"
     render_section_header(
