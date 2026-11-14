@@ -982,7 +982,7 @@ def _apply_theme(fig, *, height: int = 360, show_legend: bool = False,
 
 
 def _pad_for_value_labels(fig, *, horizontal: bool = True,
-                          frac: float = 0.30) -> None:
+                          frac: float = 0.35) -> None:
     """Extend the value axis so labels drawn OUTSIDE the bars fit inside it.
 
     `textposition="outside"` puts the label past the end of its bar, and
@@ -1733,7 +1733,10 @@ def _render_dashboard(df: pd.DataFrame, metrics: dict) -> None:
             title="Weighted Return Contribution · sorted by impact",
             y_title="Contribution (%)",
         )
-        fig_waterfall.update_xaxes(tickangle=45)
+        # Vertical names: at 45 degrees adjacent tickers sit 0.7 of a bar apart
+        # and a large book's names ran into each other even on a desktop; at
+        # 90 they sit a full bar apart. The margin grows to the longest name.
+        fig_waterfall.update_xaxes(tickangle=-90, automargin=True)
         # Vertical bars: the labels sit above (or below) the bar ends.
         _pad_for_value_labels(fig_waterfall, horizontal=False, frac=0.12)
         # The values are PERCENTAGE POINTS of the portfolio's return, not
@@ -2006,7 +2009,7 @@ def _render_dashboard(df: pd.DataFrame, metrics: dict) -> None:
         # is a line between every pair of names and says nothing.
         fig_contrib.update_yaxes(showgrid=False, zeroline=False)
         # Each half is half a chart wide, and a label's width is fixed in
-        # pixels: on a phone 0.30 of a half-width axis is narrower than "-0.18%".
+        # pixels: on a phone 0.35 of a half-width axis is narrower than "-0.18%".
         _pad_for_value_labels(fig_contrib, frac=0.45)
 
         render_chart_panel(fig_contrib, key="contribution",
