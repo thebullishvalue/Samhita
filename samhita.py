@@ -982,7 +982,7 @@ def _apply_theme(fig, *, height: int = 360, show_legend: bool = False,
 
 
 def _pad_for_value_labels(fig, *, horizontal: bool = True,
-                          frac: float = 0.18) -> None:
+                          frac: float = 0.30) -> None:
     """Extend the value axis so labels drawn OUTSIDE the bars fit inside it.
 
     `textposition="outside"` puts the label past the end of its bar, and
@@ -1922,9 +1922,9 @@ def _render_dashboard(df: pd.DataFrame, metrics: dict) -> None:
                 fillcolor=chart_rgba("accent", 0.15),
             ))
             fig_lorenz.add_hline(y=50, line_dash="dot", line_color=chart_color("emerald"),
-                                annotation_text="50%", annotation_position="right")
+                                annotation_text="50%", annotation_position="top right")
             fig_lorenz.add_hline(y=80, line_dash="dot", line_color=chart_color("cyan"),
-                                annotation_text="80%", annotation_position="right")
+                                annotation_text="80%", annotation_position="top right")
             _apply_theme(
                 fig_lorenz, height=CHART_HEIGHT_MD, show_legend=True,
                 margin=CHART_MARGIN,
@@ -1953,7 +1953,7 @@ def _render_dashboard(df: pd.DataFrame, metrics: dict) -> None:
         contrib_df = contrib_df.sort_values('WEIGHTED RETURN %', ascending=False)
 
         fig_contrib = make_subplots(rows=1, cols=2, shared_yaxes=True,
-                                    subplot_titles=('Return Contribution', 'Risk Contribution'),
+                                    subplot_titles=('Return · pp', 'Risk · share %'),
                                     # Room for the left panel's outside value
                                     # labels, which at 0.02 landed inside the
                                     # right panel.
@@ -2005,7 +2005,9 @@ def _render_dashboard(df: pd.DataFrame, metrics: dict) -> None:
         # A horizontal bar's categories are the SYMBOLS; a grid across them
         # is a line between every pair of names and says nothing.
         fig_contrib.update_yaxes(showgrid=False, zeroline=False)
-        _pad_for_value_labels(fig_contrib)
+        # Each half is half a chart wide, and a label's width is fixed in
+        # pixels: on a phone 0.30 of a half-width axis is narrower than "-0.18%".
+        _pad_for_value_labels(fig_contrib, frac=0.45)
 
         render_chart_panel(fig_contrib, key="contribution",
                                units="return pp · risk share %")
@@ -2701,7 +2703,10 @@ def render_analysis_mode(
                 line_dash="dash",
                 line_color=chart_color("accent"),
                 annotation_text=f"Max: {m.get('max_drawdown', 0):.1f}%",
-                annotation_position="right",
+                # Inside the plot, above the line's right end: "right" put
+                # the label past the plot area, where the panel's edge cut it,
+                # and the line is the floor of the range, so not below it.
+                annotation_position="top right",
             )
             _apply_theme(
                 fig_dd, height=CHART_HEIGHT_MD, show_legend=False,
@@ -2793,7 +2798,7 @@ def render_analysis_mode(
                     hovertemplate='%{x|%b %d, %Y}<br>Sharpe: %{y:.2f}<extra></extra>',
                 ))
                 fig_rs.add_hline(y=1, line_dash="dash", line_color=chart_color("emerald"),
-                                 annotation_text="Target", annotation_position="right")
+                                 annotation_text="Target", annotation_position="top right")
                 fig_rs.add_hline(y=0, line_dash="dash", line_color=ink_subtle())
                 _apply_theme(
                     fig_rs, height=CHART_HEIGHT_SM, show_legend=False,
@@ -2829,7 +2834,7 @@ def render_analysis_mode(
                             hovertemplate='%{x|%b %d, %Y}<br>Beta: %{y:.2f}<extra></extra>',
                         ))
                         fig_rb.add_hline(y=1, line_dash="dash", line_color=ink_subtle(),
-                                         annotation_text="Market", annotation_position="right")
+                                         annotation_text="Market", annotation_position="top right")
                         _apply_theme(
                             fig_rb, height=CHART_HEIGHT_SM, show_legend=False,
                             margin=CHART_MARGIN,
