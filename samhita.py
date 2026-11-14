@@ -2739,6 +2739,9 @@ def render_analysis_mode(
             line_color=chart_color("emerald"),
             annotation_text=f"μ: {port_returns.mean()*100:.2f}%",
             annotation_position="top",
+            # Leans right, VaR's label leans left (VaR always sits left of the
+            # mean): centred, the two collided whenever the values were close.
+            annotation_xanchor="left",
             # The label carries its line's own claim, so the reader does not
             # have to trace a dotted rule back to a legend that is not there.
             annotation_font=dict(size=10, family=CHART_FONT,
@@ -2754,6 +2757,7 @@ def render_analysis_mode(
             # are, so it read as grey type over five blue columns. A reference
             # line's label belongs clear of the marks it is a reference FOR.
             annotation_position="top",
+            annotation_xanchor="right",
             annotation_font=dict(size=10, family=CHART_FONT,
                                  color=chart_color("rose")),
         )
