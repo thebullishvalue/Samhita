@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v2.0.19] - 2026-11-18
+### Changed
+- **One console, shared by the family.** `logger_config.py` is now the family console, the same file
+  in all nine apps, as the fidelity block of `theme.css` is for the page. Seven consoles had grown
+  from one design (five copies of the same module, two more embedded in Samhita and Swing) and
+  drifted: rules 60 and 70 wide, phases written three ways, timers rounded to whole seconds
+  ("[0s]"), colour codes written into captured logs, a second run id printed under the first.
+- **One grammar.** The product's banner once per process; a run's masthead (title, version, one
+  run id, its start); its inputs in a labelled block; numbered phases with their time; numbered
+  steps that close with what they produced and how long they took; labels in one column, long
+  values wrapping under it at 72 columns; ✓ ⚠ ✗ ℹ in their colours; result cards; and a closing
+  line, RUN COMPLETE or RUN FAILED, with the run's time and its warning and error counts.
+- **Library output joins the run.** yfinance's HTTP errors (`HTTP Error 401: Unauthorized{"finance":
+  …}`), its "possibly delisted" notices and Python warnings (a pandas RuntimeWarning with its full
+  site-packages path) printed raw into the middle of a run. Each now arrives as one dimmed ⚠ line
+  naming its source, once per run, counted as a warning.
+- **Colour only on a terminal**, so a captured log is plain text (`NO_COLOR` / `FORCE_COLOR` honoured).
+- Market data and analysis history are runs, and the four price tiers timed steps.
+
+### Fixed
+- **The Yahoo batch quote tier works again.** It called `yf.YfData`, which yfinance no longer
+  exports at the top level, so it failed on every load ("module 'yfinance' has no attribute
+  'YfData'") and prices fell through to batch history and the exchange bhavcopy. Prices resolve
+  from the live quote in one call again (all 30 holdings in about half a second; it took 2.4s
+  across three tiers).
+- The NSE bhavcopy was read and logged twice per resolution (the previous-close repair read the
+  file again); the two share one read.
+
 ## [v2.0.18] - 2026-11-18
 ### Fixed
 - **Numbers written as text read as numbers.** A table column whose numbers arrive already

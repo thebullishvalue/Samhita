@@ -122,89 +122,17 @@ try:
 except Exception:
     pass
 
-# Silence yfinance's own console chatter (HTTP errors, "Failed download",
-# FutureWarnings) so SAMHITA's curated terminal log stays clean. Genuine
-# failures are still captured and reported via the _Console below.
-import logging as _logging
+# The family console (logger_config.py, shared with every member). yfinance's own console
+# chatter (HTTP errors, "Failed download") is routed into the run as dimmed lines instead of
+# raw stderr; its FutureWarnings stay filtered (deprecation notices, not facts about a run).
 import warnings as _warnings
 
-_logging.getLogger("yfinance").setLevel(_logging.CRITICAL)
+from logger_config import console as log, capture_library_output
+
 _warnings.filterwarnings("ignore", category=FutureWarning, module="yfinance")
 # yfinance raises some FutureWarnings at the caller's line, so also match by
 # message (module-agnostic) — e.g. the auto_adjust default-change notice.
 _warnings.filterwarnings("ignore", message=r".*auto_adjust.*")
-
-_SESSION_RUN_ID = f"{datetime.now():%Y%m%d_%H%M%S}_{str(uuid.uuid4())[:8]}"
-
-
-class _Console:
-    """Minimal styled console logger (Nishkarsh-style) for SAMHITA's pipeline."""
-
-    _USE_COLOR = bool(getattr(sys.stdout, "isatty", lambda: False)())
-
-    RESET = "\033[0m"
-    BOLD = "\033[1m"
-    DIM = "\033[2m"
-    RED = "\033[91m"
-    GREEN = "\033[92m"
-    YELLOW = "\033[93m"
-    BLUE = "\033[94m"
-    CYAN = "\033[96m"
-    GRAY = "\033[90m"
-
-    def _c(self, code: str, text: str) -> str:
-        return f"{code}{text}{self.RESET}" if self._USE_COLOR else text
-
-    def _write(self, message: str = "") -> None:
-        try:
-            sys.stdout.write(message + "\n")
-            sys.stdout.flush()
-        except Exception:
-            pass
-
-    def _ts(self) -> str:
-        return datetime.now().strftime("%H:%M:%S")
-
-    def line(self, char: str = "─", length: int = 70) -> None:
-        self._write(self._c(self.GRAY, char * length))
-
-    def section(self, title: str) -> None:
-        """Open a titled data-pipeline section with the run id + timestamp."""
-        self._write()
-        self.line("═", 70)
-        self._write("  " + self._c(self.BOLD + self.CYAN, title))
-        self._write(
-            "  " + self._c(self.GRAY, f"Run {_SESSION_RUN_ID} · {self._ts()}")
-        )
-        self.line("═", 70)
-
-    def step(self, title: str) -> None:
-        self._write("  " + self._c(self.BOLD + self.BLUE, f"▸ {title}"))
-
-    def detail(self, message: str) -> None:
-        self._write("    " + self._c(self.CYAN, "→") + f" {message}")
-
-    def item(self, label: str, value: Any, indent: int = 6) -> None:
-        self._write(f"{' ' * indent}{self._c(self.GRAY, label + ':')} {value}")
-
-    def success(self, message: str) -> None:
-        self._write("    " + self._c(self.GREEN, "✓") + f" {message}")
-
-    def warning(self, message: str) -> None:
-        self._write("    " + self._c(self.YELLOW, "⚠") + f" {message}")
-
-    def error(self, message: str) -> None:
-        self._write("    " + self._c(self.RED, "✗") + f" {message}")
-
-    def summary(self, title: str, data: dict[str, Any]) -> None:
-        self._write()
-        self._write("  " + self._c(self.GRAY, f"┌─ {title}"))
-        for key, value in data.items():
-            self._write("  " + self._c(self.GRAY, f"│   {key}:") + f" {value}")
-        self._write("  " + self._c(self.GRAY, "└─"))
-
-
-log = _Console()
 
 
 def _fmt_symlist(symbols: list[str], cap: int = 12) -> str:
@@ -344,7 +272,12 @@ def _tier1_yahoo_quote(symbols: list[str]) -> dict[str, Quote]:
     last_err: Exception | None = None
     for attempt in (1, 2):
         try:
-            payload = yf.YfData().get_raw_json(_YAHOO_QUOTE_URL, params=params)
+            # YfData lives in yfinance.data; newer releases no longer export it at the top level,
+            # which failed this tier on every load ("module 'yfinance' has no attribute 'YfData'").
+            _YfData = getattr(yf, "YfData", None)
+            if _YfData is None:
+                from yfinance.data import YfData as _YfData
+            payload = _YfData().get_raw_json(_YAHOO_QUOTE_URL, params=params)
             results = (payload or {}).get("quoteResponse", {}).get("result", []) or []
             if results:
                 break
@@ -458,6 +391,17 @@ def _bhav_lookup(df: pd.DataFrame, eq_only: bool) -> dict[str, tuple[float, floa
     return lookup
 
 
+_BHAV_MEMO: dict = {}   # exchange → (lookup, session) for the resolution in progress
+
+
+def _bhav(exch: str, loader):
+    """One read of an exchange's bhavcopy per resolution: the tier and the prev-close repair
+    share it (the repair read and logged the same file a second time)."""
+    if exch not in _BHAV_MEMO:
+        _BHAV_MEMO[exch] = loader()
+    return _BHAV_MEMO[exch]
+
+
 def _nse_bhavcopy() -> tuple[dict[str, tuple[float, float]], date | None]:
     """Most recent NSE EOD bhavcopy (jugaad). Returns (lookup, session_date)."""
     try:
@@ -535,7 +479,7 @@ def _tier3_bhavcopy(symbols: list[str]) -> dict[str, Quote]:
         wanted = by_exch[exch]
         if not wanted:
             continue
-        lookup, session = loader()
+        lookup, session = _bhav(exch, loader)
         for bare, orig in wanted.items():
             hit = lookup.get(bare)
             if hit and not pd.isna(hit[0]):
@@ -677,7 +621,7 @@ def _repair_prev_close(resolved: dict[str, Quote]) -> None:
         wanted = by_exch[exch]
         if not wanted:
             continue
-        lookup, session = loader()
+        lookup, session = _bhav(exch, loader)
         if not lookup or session is None:
             continue
         for bare, sym in wanted.items():
@@ -718,7 +662,9 @@ def resolve_quotes(symbols: tuple[str, ...]) -> dict[str, Quote]:
         return {}
 
     _FETCH_RAN["primary"] = True
-    log.section("SAMHITA · MARKET DATA")
+    _BHAV_MEMO.clear()
+    log.header("Samhita · Market data", VERSION)
+    log.main_header("Request", {"Holdings": len(symbols), "Tiers": " → ".join(t[1].split(" · ")[0].strip() for t in _TIERS)})
 
     resolved: dict[str, Quote] = {}
     provisional: dict[str, Quote] = {}
@@ -728,29 +674,28 @@ def resolve_quotes(symbols: tuple[str, ...]) -> dict[str, Quote]:
         pending = [s for s in symbols if s not in resolved]
         if not pending:
             break
-        log.step(f"{tag} · {label} · {len(pending)} pending")
-        t0 = time.perf_counter()
-        try:
-            got = fetch(pending)
-        except Exception as e:
-            log.error(f"{tag} raised {type(e).__name__}: {e}")
-            got = {}
+        with log.task(label.split(" · ")[0].strip(), f"{label.split(' · ')[1]} · {len(pending)} pending") as _step:
+            t0 = time.perf_counter()
+            try:
+                got = fetch(pending)
+            except Exception as e:
+                log.error(f"{tag} raised {type(e).__name__}: {e}")
+                got = {}
 
-        accepted = 0
-        for sym, q in got.items():
-            if sym in resolved or not q.ok:
-                continue
-            # EOD data is only "current" once the session it covers has ended.
-            if q.asof is not None and q.asof < today:
-                provisional.setdefault(sym, q)
-                continue
-            resolved[sym] = q
-            accepted += 1
+            accepted = 0
+            for sym, q in got.items():
+                if sym in resolved or not q.ok:
+                    continue
+                # EOD data is only "current" once the session it covers has ended.
+                if q.asof is not None and q.asof < today:
+                    provisional.setdefault(sym, q)
+                    continue
+                resolved[sym] = q
+                accepted += 1
 
-        dt = time.perf_counter() - t0
-        held = len(provisional) - sum(1 for s in provisional if s in resolved)
-        note = f" · {held} held as stale backstop" if held and tag == "TIER 3" else ""
-        log.success(f"{tag} resolved {accepted}/{len(pending)} in {dt:.1f}s{note}")
+            held = len(provisional) - sum(1 for s in provisional if s in resolved)
+            note = f" · {held} held as stale backstop" if held and tag == "TIER 3" else ""
+            (_step.ok if accepted else _step.warn)(f"resolved {accepted}/{len(pending)}{note}")
 
     # Anything still unresolved falls back to the freshest stale quote we saw.
     backstopped: list[str] = []
@@ -773,13 +718,14 @@ def resolve_quotes(symbols: tuple[str, ...]) -> dict[str, Quote]:
     by_source: dict[str, int] = {}
     for q in resolved.values():
         by_source[q.source] = by_source.get(q.source, 0) + 1
-    log.summary("PRICE RESOLUTION", {
+    _src = {"nse": "NSE", "bse": "BSE", "yahoo": "Yahoo"}
+    log.summary("Price resolution", {
         "Holdings": len(symbols),
-        **{k: v for k, v in sorted(by_source.items())},
+        **{" ".join(_src.get(w, w) for w in k.split(":")): v for k, v in sorted(by_source.items())},
         "Unresolved": f"{len(unresolved)}" + (
             f" ({_fmt_symlist(unresolved)})" if unresolved else ""),
     })
-    log.line("═", 70)
+    log.end_run()
     return resolved
 # Current price + previous close are two views of the SAME resolved quote, so
 # both go through one cached walk of the hierarchy rather than two independent
@@ -1235,6 +1181,8 @@ def main() -> None:
     # value.
     st.session_state["theme"] = "light" if theme_choice() == "Paper" else "dark"
     inject_css(theme=st.session_state["theme"])
+    capture_library_output()
+    log.banner(PRODUCT_NAME, VERSION, "Portfolio Tracker", {"Maintainer": COMPANY})
     st.session_state.setdefault("active_scope", "PORTFOLIO")
 
     # Single main-area progress slot, created UP FRONT (outside the rail) so the
@@ -2090,9 +2038,9 @@ def fetch_analysis_data(
     end_date = datetime.now()
     start_date = end_date - timedelta(days=days_back)
 
-    log.section("SAMHITA · ANALYSIS HISTORY")
-    log.step(f"PRIMARY · yfinance · {len(symbols)} holding(s) + benchmark "
-             f"({start_date:%d-%b-%Y} → {end_date:%d-%b-%Y})")
+    log.header("Samhita · Analysis history", VERSION)
+    log.main_header("Request", {"Source": "yfinance", "Holdings": f"{len(symbols)} + NIFTY 50 benchmark",
+                                 "Window": f"{start_date:%d-%b-%Y} → {end_date:%d-%b-%Y} ({days_back} days)"})
     t0 = time.perf_counter()
 
     try:
@@ -2108,7 +2056,7 @@ def fetch_analysis_data(
         
         if benchmark_data.empty:
             log.error("Benchmark (NIFTY 50) returned empty data")
-            log.line("═", 70)
+            log.end_run("FAILED")
             return pd.DataFrame(), pd.DataFrame()
 
         # Get NIFTY 50 close prices
@@ -2136,7 +2084,7 @@ def fetch_analysis_data(
         
         if portfolio_data.empty:
             log.warning(f"Benchmark OK ({len(benchmark_df)} rows) but portfolio data empty")
-            log.line("═", 70)
+            log.end_run("FAILED")
             return pd.DataFrame(), benchmark_df
 
         # Get close prices
@@ -2158,12 +2106,12 @@ def fetch_analysis_data(
             f"History loaded · {len(portfolio_aligned.columns)} holdings × "
             f"{len(portfolio_aligned)} rows · benchmark {len(benchmark_df)} rows in {dt:.1f}s"
         )
-        log.line("═", 70)
+        log.end_run()
         return portfolio_aligned, benchmark_df
 
     except Exception as e:
         log.error(f"Analysis history fetch failed: {type(e).__name__}: {e}")
-        log.line("═", 70)
+        log.end_run("FAILED")
         return pd.DataFrame(), pd.DataFrame()
 
 
