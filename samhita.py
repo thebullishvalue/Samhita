@@ -1231,13 +1231,6 @@ def main() -> None:
                 label_visibility="collapsed",
             )
 
-        st.markdown('<div class="sidebar-title">System</div>', unsafe_allow_html=True)
-        render_rail_readout([
-            ("Version", VERSION, ""),
-            ("Sources", "4-tier", "accent"),
-            ("Cache", "5 min", ""),
-        ])
-
         _render_appearance_control()
 
     # Load data
