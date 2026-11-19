@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v2.0.20] - 2026-11-19
+### Shared with the family
+- The fidelity block of `ui/theme.css` carries the landing grids that Tattva, Nishkarsh, Nivesa,
+  Pragyam, Sanket and VAAYDO now share with Arthagati (three equal-height system panels; four
+  output cards, 4-up, 2-up, 1-up). Nothing on this app's pages changes.
+
 ## [v2.0.19] - 2026-11-18
 ### Changed
 - **One console, shared by the family.** `logger_config.py` is now the family console, the same file
