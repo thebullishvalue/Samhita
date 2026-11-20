@@ -1,9 +1,11 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
+All notable changes to **Samhita** are documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+The format is based on [Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html).
+
+---
 
 ## [v2.0.21] - 2026-11-19
 ### Changed
@@ -314,4 +316,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [v1.1.0] - Previous Release
 
-Institutional-grade analytics, benchmark comparison, advanced metrics
+Institutional-grade analytics, benchmark comparison, advanced metrics.
+
+### Added
+- Institutional-grade analytics engine with 30+ performance metrics
+- NIFTY 50 benchmark comparison with Alpha, Beta, R-Squared, Tracking Error
+- Advanced risk metrics: Sharpe, Sortino, Calmar, VaR, CVaR, Information Ratio
+- Rolling analytics (Sharpe and Beta with dynamic windows)
+- Monthly returns heatmap with YTD column
+- Drawdown analysis with underwater equity curve
+- Holding attribution analysis
+
+---
+
+## [v1.0.0] - Initial Release
+
+### Added
+- Initial release with portfolio tracking and basic analytics
+- Real-time price fetching from Yahoo Finance
+- Dashboard mode with performance analysis and holdings analytics
+- Excel data import and export functionality
