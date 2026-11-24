@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ---
 
+## [v2.0.24] - 2026-11-24
+### Changed
+- **The family's fidelity block, in step.** It gains the rule that makes a help icon's (?) follow its colour:
+  Streamlit strokes the ring near-white at 60% whatever colour it is given, which all but hid it on Paper in
+  Vyāpti, Pragyam, Arthagati, Nivesa and Anumaan. No widget here shows a help icon today; the block stays
+  identical in every member, so the next one reads.
+
+---
+
 ## [v2.0.23] - 2026-11-23
 ### Fixed
 - **The chart window keeps its choice across pages.** The window control held the choice in its
