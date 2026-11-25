@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 
 ---
 
+## [v2.0.25] - 2026-11-25
+### Fixed
+- **Text keeps its size on an iPhone.** iOS Safari enlarges the text of a block it judges too wide to read
+  ("text autosizing"): a table that scrolls sideways with long lines in it was drawn with its prose
+  columns, and their headers, at twice the size of the rest (found on Nivesa's Audit Trail). The page and
+  every table's own iframe now keep the type scale as written (the shared fidelity block, and the table iframe's stylesheet).
+
+---
+
 ## [v2.0.24] - 2026-11-24
 ### Changed
 - **The family's fidelity block, in step.** It gains the rule that makes a help icon's (?) follow its colour:
